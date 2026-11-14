@@ -1,13 +1,13 @@
 {
     "name": "EnhancedDecor",
-    "description": "Wear any decoration, effect, nameplate, frame, badge, profile picture or banner. Only you see it.",
+    "description": "Your whole profile, only on your phone: any decoration, effect, nameplate, frame, badge, picture, banner, name, bio, colors and saved looks.",
     "authors": [
         {
             "name": "ad3333m"
         }
     ],
     "main": "index.js",
-    "hash": "1bcd1be83388a5c4cbe859f47f1a2cc79813857b66100662dda9ebe360dd4cef",
+    "hash": "cce0c0337bc02e5700c585b5cb31526a874e73a9f9d33019fe01981e244678bb",
     "vendetta": {
         "icon": "ic_profile_24px"
     }

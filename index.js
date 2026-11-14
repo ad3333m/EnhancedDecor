@@ -106,6 +106,9 @@
     st.hideBadges = !!st.hideBadges;
     if (typeof st.banner !== "string") st.banner = "";
     if (typeof st.avatar !== "string") st.avatar = "";
+    // Profile text: name, username, pronouns, bio, color1, color2, created (YYYY-MM-DD), oldName, email, phone
+    if (!st.p || typeof st.p !== "object") st.p = {};
+    if (!Array.isArray(st.presets)) st.presets = [];
     // Picked photos live in their own keys ("local" in state), so saving the state stays small and fast
     if (/^data:/.test(st.banner)) {
         storage.img_banner = st.banner;
@@ -223,15 +226,30 @@
         });
     }
 
+    var LEGACY_ICON = "6de6d34650760ba5551a79732e98ed60";
+
     function mergeBadges(real) {
         var ours = ourBadges();
+        var old = st.p.oldName;
+        if (old) {
+            ours = ours.filter(function (b) { return b.id !== "legacy_username"; });
+            ours.push({ id: "legacy_username", description: "Originally known as " + old, icon: LEGACY_ICON });
+        }
         var ids = ours.map(function (b) { return b.id; });
         var kept = st.hideBadges || !Array.isArray(real) ? [] : real.filter(function (b) { return !b || ids.indexOf(b.id) === -1; });
         return kept.concat(ours);
     }
 
     function badgesChanged() {
-        return st.badges.length > 0 || st.hideBadges;
+        return st.badges.length > 0 || st.hideBadges || !!st.p.oldName;
+    }
+
+    function colorInt(hex) {
+        return hex ? parseInt(hex.slice(1), 16) : null;
+    }
+
+    function createdDate() {
+        return st.p.created ? new Date(st.p.created + "T12:00:00Z") : null;
     }
 
     function userProps(u) {
@@ -247,6 +265,15 @@
                 nameplate: { skuId: sel[2].s, asset: sel[2].a, label: sel[2].n, palette: sel[2].p || "crimson", expiresAt: null }
             });
         }
+        var P = st.p;
+        if (P.name) {
+            p.globalName = P.name;
+            p.displayName = P.name;
+        }
+        if (P.username) p.username = P.username;
+        if (P.created) p.createdAt = createdDate();
+        if (P.email) p.email = P.email;
+        if (P.phone) p.phone = P.phone;
         return Object.keys(p).length ? p : null;
     }
 
@@ -264,7 +291,14 @@
         if (sel[3]) p.profileFrame = { skuId: sel[3].s, expiresAt: null };
         if (imgOf("banner")) p.banner = "enhanced_decor"; // any value: the link comes from getUserBannerURL
         if (badgesChanged()) p.badges = mergeBadges(prof.badges);
-        if ((sel[1] || sel[3] || imgOf("banner")) && !prof.premiumType) p.premiumType = 2;
+        var P = st.p;
+        if (P.bio) p.bio = P.bio;
+        if (P.pronouns) p.pronouns = P.pronouns;
+        if (P.color1) {
+            p.accentColor = colorInt(P.color1);
+            p.themeColors = [colorInt(P.color1), colorInt(P.color2 || P.color1)];
+        }
+        if ((sel[1] || sel[3] || imgOf("banner") || P.color1) && !prof.premiumType) p.premiumType = 2;
         return Object.keys(p).length ? p : null;
     }
 
@@ -343,12 +377,71 @@
         save();
     }
 
+    var FIELD_CHECK = {
+        color1: [/^#[0-9a-f]{6}$/i, "Colors look like #5865f2"],
+        color2: [/^#[0-9a-f]{6}$/i, "Colors look like #5865f2"],
+        created: [/^(20[1-9]\d)-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, "Dates look like 2016-05-21"]
+    };
+
+    // Returns false when the value was refused
+    function setField(k, v) {
+        v = String(v || "").trim();
+        if (/^color/.test(k) && /^[0-9a-f]{6}$/i.test(v)) v = "#" + v;
+        var check = FIELD_CHECK[k];
+        if (v && check && !check[0].test(v)) {
+            toast(check[1]);
+            return false;
+        }
+        if ((st.p[k] || "") === v) return true;
+        if (v) st.p[k] = v;
+        else delete st.p[k];
+        save();
+        return true;
+    }
+
+    // Bumped when the profile text changes from outside its fields (reset, preset), so the fields show it
+    var profileVersion = 0;
+
     function resetAll() {
         [0, 1, 2, 3].forEach(function (i) { sel[i] = null; });
         st.badges = [];
         st.hideBadges = false;
+        st.p = {};
+        profileVersion++;
         setImg("avatar", "");
         setImg("banner", "");
+    }
+
+    // ---- presets: a whole look, pictures included ----
+
+    function savePreset(name) {
+        name = String(name || "").trim().slice(0, 32) || "Look " + (st.presets.length + 1);
+        var id = String(Date.now());
+        ["avatar", "banner"].forEach(function (k) {
+            if (st[k] === "local") storage["pimg_" + id + "_" + k] = imgOf(k);
+        });
+        st.presets.push({ id: id, name: name, data: JSON.parse(JSON.stringify({ sel: sel, badges: st.badges, hideBadges: st.hideBadges, p: st.p, avatar: st.avatar, banner: st.banner })) });
+        save();
+        toast("Saved " + name);
+    }
+
+    function loadPreset(pr) {
+        var d = pr.data;
+        [0, 1, 2, 3].forEach(function (i) { sel[i] = d.sel ? d.sel[i] : null; });
+        st.badges = (d.badges || []).slice();
+        st.hideBadges = !!d.hideBadges;
+        st.p = Object.assign({}, d.p);
+        profileVersion++;
+        ["avatar", "banner"].forEach(function (k) {
+            setImg(k, d[k] === "local" ? storage["pimg_" + pr.id + "_" + k] : d[k]);
+        });
+        toast("Wearing " + pr.name);
+    }
+
+    function deletePreset(pr) {
+        st.presets = st.presets.filter(function (x) { return x !== pr; });
+        ["avatar", "banner"].forEach(function (k) { delete storage["pimg_" + pr.id + "_" + k]; });
+        save();
     }
 
     // ---- finding Discord's parts ----
@@ -431,6 +524,9 @@
         page: { flex: 1, padding: 12, gap: 10 },
         text: { color: TEXT, fontSize: 14 },
         bold: { color: TEXT, fontSize: 16, fontWeight: "700" },
+        label: { color: TEXT, fontSize: 12, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.5 },
+        swatch: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, borderColor: BORDER },
+        swatchOn: { borderColor: TEXT, borderWidth: 3 },
         muted: { color: MUTED, fontSize: 12 },
         card: { borderRadius: 16, overflow: "hidden", backgroundColor: CARD, borderWidth: 1, borderColor: BORDER },
         banner: { height: 92, backgroundColor: BRAND },
@@ -498,15 +594,18 @@
 
     function Preview() {
         var u = me();
-        var name = u ? u.globalName || u.username : "You";
+        var P = st.p;
+        var name = P.name || (u ? u.globalName || u.username : "You");
         var shown = mergeBadges(u ? realBadges(u.id) : []);
         var chips = [];
         if (sel[1]) chips.push("Effect: " + sel[1].n);
         if (sel[3]) chips.push("Frame: " + sel[3].n);
-        return h(RN.View, { style: styles.card },
+        if (P.created) chips.push("Member since " + P.created);
+        var tint = P.color1 ? { backgroundColor: P.color1 } : null;
+        return h(RN.View, { style: [styles.card, P.color1 && { borderColor: P.color2 || P.color1, borderWidth: 2 }] },
             imgOf("banner")
                 ? h(RN.Image, { source: { uri: imgOf("banner") }, style: styles.banner, resizeMode: "cover" })
-                : h(RN.View, { style: styles.banner }),
+                : h(RN.View, { style: [styles.banner, tint] }),
             h(RN.Pressable, { style: styles.reset, onPress: resetAll }, h(RN.Text, { style: styles.resetText }, "Reset all")),
             h(RN.View, { style: styles.avatarWrap },
                 h(RN.Image, { source: { uri: imgOf("avatar") || (u ? avatarOf(u) : CDN + "embed/avatars/0.png") }, style: styles.avatar }),
@@ -515,6 +614,8 @@
                 h(RN.View, { style: styles.plate },
                     sel[2] && h(RN.Image, { source: { uri: thumb(2, sel[2]) }, style: styles.plateImg, resizeMode: "cover" }),
                     h(RN.Text, { numberOfLines: 1, style: styles.bold }, name)),
+                (P.username || P.pronouns) ? h(RN.Text, { numberOfLines: 1, style: styles.muted }, [P.username, P.pronouns].filter(Boolean).join(" · ")) : null,
+                P.bio ? h(RN.Text, { numberOfLines: 2, style: styles.text }, P.bio) : null,
                 shown.length > 0 && h(RN.View, { style: styles.badgeRow }, shown.map(function (b) {
                     return b && b.icon ? h(RN.Image, { key: b.id, source: { uri: b.iconSrc || badgeIcon(b.icon) }, style: { width: 20, height: 20 } }) : null;
                 }))),
@@ -693,9 +794,103 @@
             current ? h(RN.Image, { source: { uri: current }, style: cfg.preview, resizeMode: "cover" }) : null);
     }
 
+    // A text field that saves when you leave it (saving on every key would redraw Discord each time)
+    function Field(p) {
+        var vs = React.useState(st.p[p.k] || "");
+        var commit = function () {
+            if (!setField(p.k, vs[0])) vs[1](st.p[p.k] || "");
+        };
+        return h(RN.View, { style: { gap: 4 } },
+            h(RN.Text, { style: styles.label }, p.label),
+            h(RN.TextInput, {
+                value: vs[0],
+                onChangeText: vs[1],
+                onEndEditing: commit,
+                onBlur: commit,
+                onSubmitEditing: p.multi ? undefined : commit,
+                placeholder: p.ph,
+                placeholderTextColor: "#949ba4",
+                multiline: !!p.multi,
+                maxLength: p.max,
+                autoCapitalize: p.caps || "sentences",
+                autoCorrect: !p.caps,
+                keyboardType: p.kb,
+                style: [styles.input, p.multi && { minHeight: 96, textAlignVertical: "top" }]
+            }));
+    }
+
+    var SWATCHES = ["#5865f2", "#eb459e", "#ed4245", "#f0b232", "#57f287", "#00a8fc", "#9b59b6", "#1abc9c", "#ffffff", "#111214"];
+
+    function ColorField(p) {
+        var vs = React.useState(st.p[p.k] || "");
+        var set = function (v) {
+            setField(p.k, v);
+            vs[1](st.p[p.k] || "");
+        };
+        return h(RN.View, { style: { gap: 6 } },
+            h(RN.Text, { style: styles.label }, p.label),
+            h(RN.View, { style: { flexDirection: "row", gap: 8, alignItems: "center" } },
+                h(RN.View, { style: [styles.swatch, { width: 38, height: 38, backgroundColor: st.p[p.k] || "transparent" }] }),
+                h(RN.TextInput, {
+                    value: vs[0],
+                    onChangeText: vs[1],
+                    onEndEditing: function () { set(vs[0]); },
+                    onSubmitEditing: function () { set(vs[0]); },
+                    placeholder: "#5865f2",
+                    placeholderTextColor: "#949ba4",
+                    autoCapitalize: "none",
+                    autoCorrect: false,
+                    maxLength: 7,
+                    style: [styles.input, { flex: 1 }]
+                }),
+                h(Pill, { label: "Clear", onPress: function () { set(""); } })),
+            h(RN.View, { style: styles.badgeRow }, SWATCHES.map(function (c) {
+                return h(RN.Pressable, { key: c, onPress: function () { set(c); }, style: [styles.swatch, { backgroundColor: c }, st.p[p.k] === c && styles.swatchOn] });
+            })));
+    }
+
+    function ProfileTab() {
+        return h(RN.ScrollView, { style: { flex: 1 }, contentContainerStyle: { gap: 12, paddingBottom: 80 }, keyboardShouldPersistTaps: "handled" },
+            h(RN.Text, { style: styles.muted }, "Leave a field empty to keep your real one. Only this phone sees the changes."),
+            h(Field, { k: "name", label: "Display name", ph: "Your display name", max: 32 }),
+            h(Field, { k: "username", label: "Username", ph: "username", max: 32, caps: "none" }),
+            h(Field, { k: "pronouns", label: "Pronouns", ph: "they/them", max: 40 }),
+            h(Field, { k: "bio", label: "About me", ph: "Write something", max: 190, multi: true }),
+            h(ColorField, { k: "color1", label: "Profile color" }),
+            h(ColorField, { k: "color2", label: "Second color (gradient)" }),
+            h(Field, { k: "created", label: "Account created (Member since)", ph: "2016-05-21", max: 10, caps: "none", kb: "numbers-and-punctuation" }),
+            h(Field, { k: "oldName", label: "Originally known as (old username badge)", ph: "name#1234", max: 40, caps: "none" }),
+            h(Field, { k: "email", label: "Email (shown in your account settings)", ph: "you@example.com", max: 80, caps: "none", kb: "email-address" }),
+            h(Field, { k: "phone", label: "Phone (shown in your account settings)", ph: "+44 7700 900000", max: 24, caps: "none", kb: "phone-pad" }));
+    }
+
+    function Presets() {
+        var ns = React.useState("");
+        return h(RN.View, { style: { gap: 8 } },
+            h(RN.Text, { style: styles.label }, "Saved looks"),
+            h(RN.View, { style: { flexDirection: "row", gap: 8, alignItems: "center" } },
+                h(RN.TextInput, {
+                    value: ns[0],
+                    onChangeText: ns[1],
+                    placeholder: "Name this look",
+                    placeholderTextColor: "#949ba4",
+                    maxLength: 32,
+                    style: [styles.input, { flex: 1 }]
+                }),
+                h(Pill, { label: "Save", on: true, onPress: function () { savePreset(ns[0]); ns[1](""); } })),
+            st.presets.length === 0 ? h(RN.Text, { style: styles.muted }, "Nothing saved yet. Save your current look to switch back to it in one tap.") : null,
+            st.presets.map(function (pr) {
+                return h(RN.View, { key: pr.id, style: styles.row },
+                    h(RN.Text, { style: [styles.text, { flex: 1 }], numberOfLines: 1 }, pr.name),
+                    h(Pill, { label: "Wear", on: true, onPress: function () { loadPreset(pr); } }),
+                    h(Pill, { label: "Delete", onPress: function () { deletePreset(pr); } }));
+            }));
+    }
+
     function More() {
         var counts = TYPES.map(function (t, i) { return Object.keys(cat[i]).length + " " + t.label.toLowerCase(); }).join(", ");
-        return h(RN.ScrollView, { style: { flex: 1 }, contentContainerStyle: { gap: 10, paddingBottom: 60 } },
+        return h(RN.ScrollView, { style: { flex: 1 }, contentContainerStyle: { gap: 10, paddingBottom: 60 }, keyboardShouldPersistTaps: "handled" },
+            h(Presets, null),
             h(RN.View, { style: styles.row },
                 h(RN.View, { style: { flex: 1 } },
                     h(RN.Text, { style: styles.text }, "Button in the chat bar"),
@@ -709,7 +904,8 @@
             h(RN.Text, { style: styles.muted }, "Also in Settings → " + NAME + "."));
     }
 
-    var TABS = ["Decor", "Effects", "Nameplates", "Frames", "Badges", "Avatar", "Banner", "More"];
+    var TABS = ["Profile", "Decor", "Effects", "Nameplates", "Frames", "Badges", "Avatar", "Banner", "More"];
+    var GRID_TABS = ["Decor", "Effects", "Nameplates", "Frames"];
 
     function Page() {
         var tick = useTick();
@@ -723,11 +919,14 @@
             if (stale || !Object.keys(cat[0]).length) refresh();
         }, []);
 
-        var body = tab < 4 ? h(Grid, { key: "g" + tab, type: tab, tick: tick, width: width })
-            : tab === 4 ? h(Badges, { tick: tick, width: width })
-                : tab === 5 ? h(ImageTab, { key: "avatar", k: "avatar" })
-                    : tab === 6 ? h(ImageTab, { key: "banner", k: "banner" })
-                        : h(More, null);
+        var name = TABS[tab];
+        var grid = GRID_TABS.indexOf(name);
+        var body = grid !== -1 ? h(Grid, { key: "g" + grid, type: grid, tick: tick, width: width })
+            : name === "Profile" ? h(ProfileTab, { key: "profile" + profileVersion })
+                : name === "Badges" ? h(Badges, { tick: tick, width: width })
+                    : name === "Avatar" ? h(ImageTab, { key: "avatar", k: "avatar" })
+                        : name === "Banner" ? h(ImageTab, { key: "banner", k: "banner" })
+                            : h(More, null);
 
         return h(RN.View, { style: [styles.page, { minHeight: Math.round(dims.height * 0.8) }] },
             h(Preview, null),
@@ -886,16 +1085,52 @@
                     common.FluxDispatcher.subscribe("CONNECTION_OPEN", onOpen);
                     unpatches.push(function () { common.FluxDispatcher.unsubscribe("CONNECTION_OPEN", onOpen); });
                 }
-                // Your messages in chat are native rows that carry the avatar link themselves
+            });
+            // Your messages in chat are native rows that carry the name and avatar themselves
+            optional("Chat rows", function () {
                 var RowManager = metro.findByName("RowManager");
-                if (RowManager && RowManager.prototype && typeof RowManager.prototype.generate === "function") {
-                    unpatches.push(after("generate", RowManager.prototype, function (a, row) {
-                        var src = a[0] && a[0].message;
-                        if (row && row.type === 1 && row.message && src && src.author && mine(src.author) && typeof row.message.avatarURL === "string") {
-                            row.message.avatarURL = imgOf("avatar");
-                        }
-                    }));
+                if (!RowManager || !RowManager.prototype || typeof RowManager.prototype.generate !== "function") return;
+                unpatches.push(after("generate", RowManager.prototype, function (a, row) {
+                    var src = a[0] && a[0].message;
+                    var m = row && row.type === 1 && row.message;
+                    if (!m || !src || !src.author || !isMe(src.author.id)) return;
+                    if (imgOf("avatar") && typeof m.avatarURL === "string") m.avatarURL = imgOf("avatar");
+                    var real = src.author.globalName || src.author.username;
+                    if (st.p.name && typeof m.username === "string" && m.username === real) m.username = st.p.name;
+                }));
+            });
+            // Display name and username wherever Discord works them out
+            optional("Names", function () {
+                var names = metro.findByProps("useName", "getGlobalName") || metro.findByProps("getUserTag", "getGlobalName");
+                if (!names) return;
+                var myName = function (u) { return st.p.name && u && isMe(u.id) ? st.p.name : undefined; };
+                ["getName", "useName", "getGlobalName"].forEach(function (k) {
+                    if (typeof names[k] !== "function") return;
+                    unpatches.push(after(k, names, function (a, r) { return myName(a[0]) || r; }));
+                });
+                if (typeof names.getUserTag === "function") {
+                    unpatches.push(after("getUserTag", names, function (a, r) { return st.p.username && a[0] && isMe(a[0].id) ? st.p.username : r; }));
                 }
+            });
+            // "Member since": Discord reads it from your id
+            optional("Account creation date", function () {
+                var snow = metro.findByProps("extractTimestamp");
+                if (!snow || typeof snow.extractTimestamp !== "function") return;
+                unpatches.push(vendetta.patcher.instead("extractTimestamp", snow, function (a, orig) {
+                    var d = st.p.created && isMe(a[0]) ? createdDate() : null;
+                    return d ? d.getTime() : orig.apply(this, a);
+                }));
+            });
+            // The account switcher
+            optional("Account switcher", function () {
+                var accounts = metro.findByStoreName("MultiAccountStore");
+                if (!accounts) return;
+                ["getUsers", "getValidUsers"].forEach(function (k) {
+                    if (typeof accounts[k] !== "function") return;
+                    unpatches.push(after(k, accounts, function (a, list) {
+                        return Array.isArray(list) ? patched(list, function (l) { return l.map(function (u) { return u && isMe(u.id) ? patched(u, userProps) : u; }); }) : list;
+                    }));
+                });
             });
             optional("Chat bar button", addChatButton);
             optional("Settings row", addSettingsRow);

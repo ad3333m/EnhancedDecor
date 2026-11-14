@@ -20,7 +20,8 @@ along at the end.
 - **Settings → EnhancedDecor**
 - the plugin's own settings
 
-Tabs: Decor, Effects, Nameplates, Frames, Badges, Avatar, Banner, More. Tap an item to wear it; tap it again or pick **None**
+Tabs: Profile (display name, username, pronouns, bio, profile colors, account created date, old username, email, phone),
+Decor, Effects, Nameplates, Frames, Badges, Avatar, Banner, More (saved looks). Tap an item to wear it; tap it again or pick **None**
 to take it off. The card at the top shows how your profile looks.
 
 The catalog comes from [litruv/discord-collectibles](https://github.com/litruv/discord-collectibles) (a weekly dump of

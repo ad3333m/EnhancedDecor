@@ -53,18 +53,25 @@ const findInReactTree = (t, f) => {
 const storage = { selected: JSON.stringify([null, null, null, null]) };
 const avatars = { getUserAvatarURL: u => "https://cdn/avatar/" + u.id, getUserAvatarSource: u => ({ uri: "https://cdn/avatar/" + u.id }) };
 function RowManager() { }
-RowManager.prototype.generate = function ({ message }) { return { type: 1, message: { id: message.id, avatarURL: "https://cdn/avatar/" + message.author.id } }; };
+RowManager.prototype.generate = function ({ message }) { return { type: 1, message: { id: message.id, avatarURL: "https://cdn/avatar/" + message.author.id, username: message.author.globalName || message.author.username } }; };
+const nameOf = u => u.globalName || u.username;
+const names = { getName: nameOf, useName: nameOf, getGlobalName: nameOf, getUserTag: u => u.username };
+const snow = { extractTimestamp: () => 1e12 };
+const MultiAccountStore = { getUsers: () => [me, friend] };
 const GIF = "R0lGODlhAQABAAAAACw=";
 globalThis.__turboModuleProxy = n => (n === "ImagePickerManager" ? { launchImageLibrary: (o, cb) => cb({ assets: [{ type: "image/gif", base64: GIF }] }) } : null);
-const props = { "getUserAvatarURL,getUserAvatarSource": avatars, "getAPIBaseURL,get": { get: () => Promise.reject(new Error("no live shop in tests")) }, pushLazy: modals, "Navigator,getHeaderCloseButton": nav, getUserBannerURL: banners };
+const props = { "useName,getGlobalName": names, extractTimestamp: snow, "getUserAvatarURL,getUserAvatarSource": avatars, "getAPIBaseURL,get": { get: () => Promise.reject(new Error("no live shop in tests")) }, pushLazy: modals, "Navigator,getHeaderCloseButton": nav, getUserBannerURL: banners };
 const vendetta = {
     metro: {
-        findByStoreName: n => ({ UserStore, UserProfileStore })[n],
+        findByStoreName: n => ({ UserStore, UserProfileStore, MultiAccountStore })[n],
         findByProps: (...p) => props[p.join(",")],
         findByName: n => ({ useBadges, RowManager })[n],
         common: { React, ReactNative: RN, stylesheet: { createThemedStyleSheet: s => s }, clipboard: { getString: () => Promise.resolve(" https://x.test/b.gif \n") }, NavigationNative: { useNavigation: () => null } }
     },
-    patcher: { after },
+    patcher: {
+        after,
+        instead: (name, obj, cb) => { const orig = obj[name]; obj[name] = function (...a) { return cb.call(this, a, orig); }; return () => { obj[name] = orig; }; }
+    },
     plugin: { storage },
     utils: { findInReactTree },
     logger: { warn() { }, error(...a) { console.error(...a); } },
@@ -147,14 +154,56 @@ const text = n => [].concat(n.props.children).map(c => (c && c.props ? text(c) :
     await TR.act(() => tree.root.findAll(n => n.type === "Switch")[0].props.onValueChange(true));
     assert.deepStrictEqual(UserProfileStore.getUserProfile("1").badges.map(b => b.id), ["premium", "staff", "ed_account_age_1"], "hide real badges");
 
+    // Profile tab
+    await press("Profile");
+    const input = ph => tree.root.findAll(n => n.type === "TextInput" && n.props.placeholder === ph)[0];
+    const type = async (ph, v) => { await TR.act(() => input(ph).props.onChangeText(v)); await TR.act(() => input(ph).props.onEndEditing()); };
+    await type("Your display name", "Cool Adam");
+    await type("username", "cooladam");
+    await type("they/them", "he/him");
+    await type("Write something", "hello there");
+    await type("2016-05-21", "2016-05-21");
+    await type("2016-05-21", "not a date"); // refused, keeps the last good one
+    await type("name#1234", "adam#0001");
+    await type("you@example.com", "a@b.test");
+    await TR.act(() => tree.root.findAll(n => n.type === "Pressable" && n.props.style && n.props.style[1] && n.props.style[1].backgroundColor === "#eb459e")[0].props.onPress());
+
+    const cu = UserStore.getCurrentUser();
+    assert.strictEqual(cu.globalName, "Cool Adam");
+    assert.strictEqual(cu.username, "cooladam");
+    assert.strictEqual(cu.email, "a@b.test");
+    assert.strictEqual(names.getName(me), "Cool Adam", "name helpers");
+    assert.strictEqual(names.getName(friend), "friend");
+    assert.strictEqual(names.getUserTag(me), "cooladam");
+    const prof = UserProfileStore.getUserProfile("1");
+    assert.strictEqual(prof.bio, "hello there");
+    assert.strictEqual(prof.pronouns, "he/him");
+    assert.deepStrictEqual(prof.themeColors, [0xeb459e, 0xeb459e], "profile colors");
+    assert.strictEqual(snow.extractTimestamp("1"), Date.parse("2016-05-21T12:00:00Z"), "member since");
+    assert.strictEqual(snow.extractTimestamp("2"), 1e12);
+    assert.strictEqual(prof.badges.find(b => b.id === "legacy_username").description, "Originally known as adam#0001");
+    assert.strictEqual(MultiAccountStore.getUsers()[0].globalName, "Cool Adam", "account switcher");
+    assert.strictEqual(MultiAccountStore.getUsers()[1], friend);
+    assert.strictEqual(new RowManager().generate({ message: { id: "m", author: me } }).message.username, "Cool Adam", "chat rows");
+    assert.strictEqual(JSON.parse(storage.state).p.created, "2016-05-21");
+
     await press("More");
     await TR.act(() => tree.root.findAll(n => n.type === "Switch")[0].props.onValueChange(false));
     assert(!ChatInputActions.default.type().props.children.some(c => c.key === "enhanced-decor"), "chat button can be turned off");
 
+    // presets: save, reset, wear again (picked photo included)
+    await TR.act(() => input("Name this look").props.onChangeText("Party"));
+    await press("Save");
     await press("Reset all");
     assert.strictEqual(UserStore.getCurrentUser(), me, "reset removes everything");
     assert.strictEqual(banners.getUserBannerURL({ id: "1" }), "https://cdn/real-banner");
     assert.strictEqual(me.getAvatarURL(), "https://cdn/avatar/1", "reset removes the avatar");
+    assert.strictEqual(snow.extractTimestamp("1"), 1e12);
+    await press("Wear");
+    assert.strictEqual(UserStore.getCurrentUser().globalName, "Cool Adam", "preset brings the look back");
+    assert.strictEqual(me.getAvatarURL(), gif, "preset brings the picked photo back");
+    assert(UserProfileStore.getUserProfile("1").profileEffect.skuId);
+    await press("Reset all");
 
     plugin.onUnload();
     assert(!sections.EnhancedDecor, "settings row removed on unload");
