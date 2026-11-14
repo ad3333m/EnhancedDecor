@@ -300,7 +300,7 @@
 
     function setBanner(url) {
         url = String(url || "").trim();
-        if (url && !/^https:\/\/\S+$/i.test(url)) return toast("Banner needs an https:// image link");
+        if (url && !/^(https:\/\/\S+|data:image\/[\w.+-]+;base64,\S+)$/i.test(url)) return toast("Banner needs an https:// image link");
         st.banner = url;
         save();
     }
@@ -593,8 +593,23 @@
             }));
     }
 
+    // A photo from the library, kept inside the plugin as a data: link (resized so storage stays small)
+    function pickPhoto() {
+        var picker = null;
+        try {
+            picker = (G.__turboModuleProxy && G.__turboModuleProxy("ImagePickerManager")) || RN.NativeModules.ImagePickerManager;
+        } catch (e) { }
+        if (!picker || typeof picker.launchImageLibrary !== "function") return toast("Couldn't open the photo picker");
+        picker.launchImageLibrary({ mediaType: "photo", selectionLimit: 1, includeBase64: true, maxWidth: 1200, maxHeight: 480, quality: 0.85 }, function (res) {
+            if (!res || res.didCancel) return;
+            var a = res.assets && res.assets[0];
+            if (res.errorCode || !a || !a.base64) return toast(res.errorMessage || "Couldn't read that photo");
+            setBanner("data:" + (a.type || "image/jpeg") + ";base64," + a.base64);
+        });
+    }
+
     function Banner() {
-        var vs = React.useState(st.banner);
+        var vs = React.useState(/^data:/.test(st.banner) ? "" : st.banner);
         var v = vs[0];
         function paste() {
             try {
@@ -607,7 +622,9 @@
             }
         }
         return h(RN.ScrollView, { style: { flex: 1 }, contentContainerStyle: { gap: 10, paddingBottom: 60 }, keyboardShouldPersistTaps: "handled" },
-            h(RN.Text, { style: styles.muted }, "Paste a link to any image or GIF. It shows as your banner on your profile, only on this phone."),
+            h(RN.Text, { style: styles.muted }, "Pick a photo, or paste a link to any image or GIF. It shows as your banner on your profile, only on this phone."),
+            h(RN.Pressable, { style: [styles.pill, styles.on, { alignItems: "center", paddingVertical: 12 }], onPress: pickPhoto },
+                h(RN.Text, { style: styles.bold }, "Pick from Photos")),
             h(RN.TextInput, {
                 value: v,
                 onChangeText: vs[1],
