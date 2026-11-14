@@ -1,7 +1,7 @@
 # EnhancedDecor
 
-Wear any avatar decoration, profile effect, nameplate or profile frame from the whole Discord shop, plus any badges
-and a custom banner, for free. It only changes what your own phone draws: nobody else sees it.
+Wear any avatar decoration, profile effect, nameplate or profile frame from the whole Discord shop, plus any badges,
+a custom profile picture (GIFs too) and a custom banner, for free. It only changes what your own phone draws: nobody else sees it.
 
 ## Install (Endcord Mobile, Revenge, Kettu, Bunny)
 
@@ -20,7 +20,7 @@ along at the end.
 - **Settings → EnhancedDecor**
 - the plugin's own settings
 
-Tabs: Decor, Effects, Nameplates, Frames, Badges, Banner, More. Tap an item to wear it; tap it again or pick **None**
+Tabs: Decor, Effects, Nameplates, Frames, Badges, Avatar, Banner, More. Tap an item to wear it; tap it again or pick **None**
 to take it off. The card at the top shows how your profile looks.
 
 The catalog comes from [litruv/discord-collectibles](https://github.com/litruv/discord-collectibles) (a weekly dump of

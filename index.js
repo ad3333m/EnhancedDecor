@@ -105,6 +105,18 @@
     if (!Array.isArray(st.badges)) st.badges = [];
     st.hideBadges = !!st.hideBadges;
     if (typeof st.banner !== "string") st.banner = "";
+    if (typeof st.avatar !== "string") st.avatar = "";
+    // Picked photos live in their own keys ("local" in state), so saving the state stays small and fast
+    if (/^data:/.test(st.banner)) {
+        storage.img_banner = st.banner;
+        st.banner = "local";
+    }
+    var imgCache = {};
+    function imgOf(k) {
+        if (st[k] !== "local") return st[k];
+        if (imgCache[k] === undefined) imgCache[k] = storage["img_" + k] || "";
+        return imgCache[k];
+    }
     if (st.chatButton === undefined) st.chatButton = true;
     var sel = st.sel;
 
@@ -250,9 +262,9 @@
             p.profileEffect = { skuId: sel[1].s, expiresAt: null, expireAt: null };
         }
         if (sel[3]) p.profileFrame = { skuId: sel[3].s, expiresAt: null };
-        if (st.banner) p.banner = "enhanced_decor"; // any value: the link comes from getUserBannerURL
+        if (imgOf("banner")) p.banner = "enhanced_decor"; // any value: the link comes from getUserBannerURL
         if (badgesChanged()) p.badges = mergeBadges(prof.badges);
-        if ((sel[1] || sel[3] || st.banner) && !prof.premiumType) p.premiumType = 2;
+        if ((sel[1] || sel[3] || imgOf("banner")) && !prof.premiumType) p.premiumType = 2;
         return Object.keys(p).length ? p : null;
     }
 
@@ -320,10 +332,14 @@
         save();
     }
 
-    function setBanner(url) {
+    // k: "avatar" or "banner". url: https link, data: link from Photos, or "" to remove
+    function setImg(k, url) {
         url = String(url || "").trim();
-        if (url && !/^(https:\/\/\S+|data:image\/[\w.+-]+;base64,\S+)$/i.test(url)) return toast("Banner needs an https:// image link");
-        st.banner = url;
+        if (url && !/^(https:\/\/\S+|data:image\/[\w.+-]+;base64,\S+)$/i.test(url)) return toast("Needs an https:// image link");
+        var local = /^data:/.test(url);
+        storage["img_" + k] = local ? url : "";
+        imgCache[k] = local ? url : "";
+        st[k] = local ? "local" : url;
         save();
     }
 
@@ -331,8 +347,8 @@
         [0, 1, 2, 3].forEach(function (i) { sel[i] = null; });
         st.badges = [];
         st.hideBadges = false;
-        st.banner = "";
-        save();
+        setImg("avatar", "");
+        setImg("banner", "");
     }
 
     // ---- finding Discord's parts ----
@@ -488,12 +504,12 @@
         if (sel[1]) chips.push("Effect: " + sel[1].n);
         if (sel[3]) chips.push("Frame: " + sel[3].n);
         return h(RN.View, { style: styles.card },
-            st.banner
-                ? h(RN.Image, { source: { uri: st.banner }, style: styles.banner, resizeMode: "cover" })
+            imgOf("banner")
+                ? h(RN.Image, { source: { uri: imgOf("banner") }, style: styles.banner, resizeMode: "cover" })
                 : h(RN.View, { style: styles.banner }),
             h(RN.Pressable, { style: styles.reset, onPress: resetAll }, h(RN.Text, { style: styles.resetText }, "Reset all")),
             h(RN.View, { style: styles.avatarWrap },
-                h(RN.Image, { source: { uri: u ? avatarOf(u) : CDN + "embed/avatars/0.png" }, style: styles.avatar }),
+                h(RN.Image, { source: { uri: imgOf("avatar") || (u ? avatarOf(u) : CDN + "embed/avatars/0.png") }, style: styles.avatar }),
                 sel[0] && h(RN.Image, { source: { uri: thumb(0, sel[0]) }, style: styles.avatarDecor })),
             h(RN.View, { style: styles.cardBody },
                 h(RN.View, { style: styles.plate },
@@ -615,43 +631,54 @@
             }));
     }
 
-    // A photo from the library, kept inside the plugin as a data: link (resized so storage stays small)
-    function pickPhoto() {
+    // A photo or GIF from the library, kept inside the plugin as a data: link. No resize options, so the picker
+    // hands back the original file and GIFs stay animated.
+    var MAX_PHOTO = 8 * 1024 * 1024; // base64 characters, about 6 MB of image
+    function pickPhoto(k) {
         var picker = null;
         try {
             picker = (G.__turboModuleProxy && G.__turboModuleProxy("ImagePickerManager")) || RN.NativeModules.ImagePickerManager;
         } catch (e) { }
         if (!picker || typeof picker.launchImageLibrary !== "function") return toast("Couldn't open the photo picker");
-        picker.launchImageLibrary({ mediaType: "photo", selectionLimit: 1, includeBase64: true, maxWidth: 1200, maxHeight: 480, quality: 0.85 }, function (res) {
+        picker.launchImageLibrary({ mediaType: "photo", selectionLimit: 1, includeBase64: true }, function (res) {
             if (!res || res.didCancel) return;
             var a = res.assets && res.assets[0];
             if (res.errorCode || !a || !a.base64) return toast(res.errorMessage || "Couldn't read that photo");
-            setBanner("data:" + (a.type || "image/jpeg") + ";base64," + a.base64);
+            if (a.base64.length > MAX_PHOTO) return toast("That one's too big (over 6 MB). Pick a smaller one or paste a link.");
+            setImg(k, "data:" + (a.type || "image/jpeg") + ";base64," + a.base64);
         });
     }
 
-    function Banner() {
-        var vs = React.useState(/^data:/.test(st.banner) ? "" : st.banner);
+    var IMG_TABS = {
+        avatar: { hint: "Pick a photo or GIF, or paste a link. It replaces your profile picture everywhere on this phone. GIFs stay animated.", ph: "https://…/avatar.gif", preview: { width: 120, height: 120, borderRadius: 60, alignSelf: "center" } },
+        banner: { hint: "Pick a photo or GIF, or paste a link. It shows as your banner on your profile, only on this phone.", ph: "https://…/banner.gif", preview: { width: "100%", height: 140, borderRadius: 14 } }
+    };
+
+    function ImageTab(p) {
+        var k = p.k;
+        var cfg = IMG_TABS[k];
+        var vs = React.useState(st[k] === "local" ? "" : st[k]);
         var v = vs[0];
+        var current = imgOf(k);
         function paste() {
             try {
                 common.clipboard.getString().then(function (s) {
                     vs[1](String(s || "").trim());
-                    setBanner(s);
+                    setImg(k, s);
                 });
             } catch (e) {
                 toast("Couldn't read the clipboard");
             }
         }
         return h(RN.ScrollView, { style: { flex: 1 }, contentContainerStyle: { gap: 10, paddingBottom: 60 }, keyboardShouldPersistTaps: "handled" },
-            h(RN.Text, { style: styles.muted }, "Pick a photo, or paste a link to any image or GIF. It shows as your banner on your profile, only on this phone."),
-            h(RN.Pressable, { style: [styles.pill, styles.on, { alignItems: "center", paddingVertical: 12 }], onPress: pickPhoto },
+            h(RN.Text, { style: styles.muted }, cfg.hint),
+            h(RN.Pressable, { style: [styles.pill, styles.on, { alignItems: "center", paddingVertical: 12 }], onPress: function () { pickPhoto(k); } },
                 h(RN.Text, { style: styles.bold }, "Pick from Photos")),
             h(RN.TextInput, {
                 value: v,
                 onChangeText: vs[1],
-                onSubmitEditing: function () { setBanner(v); },
-                placeholder: "https://…/banner.gif",
+                onSubmitEditing: function () { setImg(k, v); },
+                placeholder: cfg.ph,
                 placeholderTextColor: "#949ba4",
                 autoCapitalize: "none",
                 autoCorrect: false,
@@ -661,9 +688,9 @@
             }),
             h(RN.View, { style: styles.buttons },
                 h(Pill, { label: "Paste link", onPress: paste }),
-                h(Pill, { label: "Use it", on: true, onPress: function () { setBanner(v); } }),
-                h(Pill, { label: "Remove", onPress: function () { vs[1](""); setBanner(""); } })),
-            st.banner ? h(RN.Image, { source: { uri: st.banner }, style: { width: "100%", height: 140, borderRadius: 14 }, resizeMode: "cover" }) : null);
+                h(Pill, { label: "Use it", on: true, onPress: function () { setImg(k, v); } }),
+                h(Pill, { label: "Remove", onPress: function () { vs[1](""); setImg(k, ""); } })),
+            current ? h(RN.Image, { source: { uri: current }, style: cfg.preview, resizeMode: "cover" }) : null);
     }
 
     function More() {
@@ -682,7 +709,7 @@
             h(RN.Text, { style: styles.muted }, "Also in Settings → " + NAME + "."));
     }
 
-    var TABS = ["Decor", "Effects", "Nameplates", "Frames", "Badges", "Banner", "More"];
+    var TABS = ["Decor", "Effects", "Nameplates", "Frames", "Badges", "Avatar", "Banner", "More"];
 
     function Page() {
         var tick = useTick();
@@ -698,8 +725,9 @@
 
         var body = tab < 4 ? h(Grid, { key: "g" + tab, type: tab, tick: tick, width: width })
             : tab === 4 ? h(Badges, { tick: tick, width: width })
-                : tab === 5 ? h(Banner, null)
-                    : h(More, null);
+                : tab === 5 ? h(ImageTab, { key: "avatar", k: "avatar" })
+                    : tab === 6 ? h(ImageTab, { key: "banner", k: "banner" })
+                        : h(More, null);
 
         return h(RN.View, { style: [styles.page, { minHeight: Math.round(dims.height * 0.8) }] },
             h(Preview, null),
@@ -815,14 +843,57 @@
                 if (banners) {
                     unpatches.push(after("getUserBannerURL", banners, function (a, url) {
                         var arg = a[0];
-                        return st.banner && arg && isMe(arg.id || arg.userId) ? st.banner : url;
+                        return imgOf("banner") && arg && isMe(arg.id || arg.userId) ? imgOf("banner") : url;
                     }));
                 }
                 var DP = findFile("modules/user_profile/DisplayProfile.tsx");
                 DP = DP && DP.default;
                 if (DP && DP.prototype && typeof DP.prototype.getBannerURL === "function") {
                     unpatches.push(after("getBannerURL", DP.prototype, function (a, url) {
-                        return st.banner && isMe(this && this.userId) ? st.banner : url;
+                        return imgOf("banner") && isMe(this && this.userId) ? imgOf("banner") : url;
+                    }));
+                }
+            });
+            optional("Avatar", function () {
+                var mine = function (u) { return !!imgOf("avatar") && !!u && isMe(u.id || u.userId); };
+                var icons = metro.findByProps("getUserAvatarURL", "getUserAvatarSource") || metro.findByProps("getUserAvatarURL");
+                if (icons && typeof icons.getUserAvatarURL === "function") {
+                    unpatches.push(after("getUserAvatarURL", icons, function (a, url) { return mine(a[0]) ? imgOf("avatar") : url; }));
+                }
+                if (icons && typeof icons.getUserAvatarSource === "function") {
+                    unpatches.push(after("getUserAvatarSource", icons, function (a, src) { return mine(a[0]) ? { uri: imgOf("avatar") } : src; }));
+                }
+                // User records draw their own avatar too, and they all share one prototype
+                var protoDone = false;
+                var patchProto = function () {
+                    var u = me();
+                    var proto = u && Object.getPrototypeOf(u);
+                    if (protoDone || !proto) return;
+                    protoDone = true;
+                    if (typeof proto.getAvatarURL === "function") {
+                        unpatches.push(after("getAvatarURL", proto, function (a, url) { return mine(this) ? imgOf("avatar") : url; }));
+                    }
+                    if (typeof proto.getAvatarSource === "function") {
+                        unpatches.push(after("getAvatarSource", proto, function (a, src) { return mine(this) ? { uri: imgOf("avatar") } : src; }));
+                    }
+                };
+                patchProto();
+                if (!protoDone && common.FluxDispatcher) {
+                    var onOpen = function () {
+                        patchProto();
+                        common.FluxDispatcher.unsubscribe("CONNECTION_OPEN", onOpen);
+                    };
+                    common.FluxDispatcher.subscribe("CONNECTION_OPEN", onOpen);
+                    unpatches.push(function () { common.FluxDispatcher.unsubscribe("CONNECTION_OPEN", onOpen); });
+                }
+                // Your messages in chat are native rows that carry the avatar link themselves
+                var RowManager = metro.findByName("RowManager");
+                if (RowManager && RowManager.prototype && typeof RowManager.prototype.generate === "function") {
+                    unpatches.push(after("generate", RowManager.prototype, function (a, row) {
+                        var src = a[0] && a[0].message;
+                        if (row && row.type === 1 && row.message && src && src.author && mine(src.author) && typeof row.message.avatarURL === "string") {
+                            row.message.avatarURL = imgOf("avatar");
+                        }
                     }));
                 }
             });

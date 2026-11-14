@@ -51,12 +51,17 @@ const findInReactTree = (t, f) => {
     return null;
 };
 const storage = { selected: JSON.stringify([null, null, null, null]) };
-const props = { "getAPIBaseURL,get": { get: () => Promise.reject(new Error("no live shop in tests")) }, pushLazy: modals, "Navigator,getHeaderCloseButton": nav, getUserBannerURL: banners };
+const avatars = { getUserAvatarURL: u => "https://cdn/avatar/" + u.id, getUserAvatarSource: u => ({ uri: "https://cdn/avatar/" + u.id }) };
+function RowManager() { }
+RowManager.prototype.generate = function ({ message }) { return { type: 1, message: { id: message.id, avatarURL: "https://cdn/avatar/" + message.author.id } }; };
+const GIF = "R0lGODlhAQABAAAAACw=";
+globalThis.__turboModuleProxy = n => (n === "ImagePickerManager" ? { launchImageLibrary: (o, cb) => cb({ assets: [{ type: "image/gif", base64: GIF }] }) } : null);
+const props = { "getUserAvatarURL,getUserAvatarSource": avatars, "getAPIBaseURL,get": { get: () => Promise.reject(new Error("no live shop in tests")) }, pushLazy: modals, "Navigator,getHeaderCloseButton": nav, getUserBannerURL: banners };
 const vendetta = {
     metro: {
         findByStoreName: n => ({ UserStore, UserProfileStore })[n],
         findByProps: (...p) => props[p.join(",")],
-        findByName: n => (n === "useBadges" ? useBadges : undefined),
+        findByName: n => ({ useBadges, RowManager })[n],
         common: { React, ReactNative: RN, stylesheet: { createThemedStyleSheet: s => s }, clipboard: { getString: () => Promise.resolve(" https://x.test/b.gif \n") }, NavigationNative: { useNavigation: () => null } }
     },
     patcher: { after },
@@ -105,9 +110,21 @@ const text = n => [].concat(n.props.children).map(c => (c && c.props ? text(c) :
     await press("Account Age: Seed (1 year)");
     await press("Banner");
     await press("Paste link");
+    await press("Avatar");
+    await press("Pick from Photos");
+    const gif = "data:image/gif;base64," + GIF;
+    assert.strictEqual(avatars.getUserAvatarURL({ id: "1" }), gif, "picked GIF is my avatar");
+    assert.deepStrictEqual(avatars.getUserAvatarSource({ id: "1" }), { uri: gif });
+    assert.strictEqual(avatars.getUserAvatarURL({ id: "2" }), "https://cdn/avatar/2", "others keep theirs");
+    assert.strictEqual(me.getAvatarURL(), gif, "user record draws it too");
+    assert.strictEqual(friend.getAvatarURL(), "https://cdn/avatar/2");
+    assert.strictEqual(new RowManager().generate({ message: { id: "m", author: me } }).message.avatarURL, gif, "chat rows");
+    assert.strictEqual(new RowManager().generate({ message: { id: "m", author: friend } }).message.avatarURL, "https://cdn/avatar/2");
+    assert.strictEqual(JSON.parse(storage.state).avatar, "local", "photo kept out of the state");
+    assert.strictEqual(storage.img_avatar, gif);
 
     const u = UserStore.getCurrentUser();
-    assert(u instanceof UserRecord && u.getAvatarURL() === "https://cdn/avatar/1", "clone keeps class methods");
+    assert(u instanceof UserRecord && u.getAvatarURL() === gif, "clone keeps class methods");
     assert(/^a?_?[0-9a-f]+$/.test(u.avatarDecorationData.asset), "decoration asset");
     assert(/^nameplates\/.+\/$/.test(u.collectibles.nameplate.asset), "nameplate asset");
     assert.strictEqual(u.collectibles.other, 1, "other collectibles kept");
@@ -137,6 +154,7 @@ const text = n => [].concat(n.props.children).map(c => (c && c.props ? text(c) :
     await press("Reset all");
     assert.strictEqual(UserStore.getCurrentUser(), me, "reset removes everything");
     assert.strictEqual(banners.getUserBannerURL({ id: "1" }), "https://cdn/real-banner");
+    assert.strictEqual(me.getAvatarURL(), "https://cdn/avatar/1", "reset removes the avatar");
 
     plugin.onUnload();
     assert(!sections.EnhancedDecor, "settings row removed on unload");

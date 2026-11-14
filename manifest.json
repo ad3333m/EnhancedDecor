@@ -1,13 +1,13 @@
 {
     "name": "EnhancedDecor",
-    "description": "Wear any decoration, effect, nameplate, frame, badge or banner from the whole Discord shop. Only you see it.",
+    "description": "Wear any decoration, effect, nameplate, frame, badge, profile picture or banner. Only you see it.",
     "authors": [
         {
             "name": "ad3333m"
         }
     ],
     "main": "index.js",
-    "hash": "04606b92073d7861eea0a41cf1f4d515c82c7d3ecfbaaaf49bd6c906dbbd9468",
+    "hash": "1bcd1be83388a5c4cbe859f47f1a2cc79813857b66100662dda9ebe360dd4cef",
     "vendetta": {
         "icon": "ic_profile_24px"
     }
