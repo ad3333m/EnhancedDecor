@@ -61,8 +61,30 @@
         ["quest_completed", "Completed a Quest", "7d9ae358c8c5e118768335dbe68b4fb8"],
         ["orb_profile_badge", "Orbs Apprentice", "83d8a1eb09a8d64e59233eec5d4d5c2d"]
     ];
+    // Tiered badges (icons in assets/content). Discord doesn't know these ids, so they're drawn from their link.
+    // ponytail: tier n of Account Age labelled as n years; Discord only says "levels up as your account gets older"
+    var TIERED = [
+        ["account_age", "Account Age", "Seed 8da9339b9d405f0194947e607c839b1bd43436211e5bf07fe7f4ce005578e9e4 Sprout f12847ebadd9022c3d67e5b31b5f3608e1ff48a222528fb6059e0fd310fc71b7 Sapling dccc28b53d39406e65e76541d6b940b23a9d31ef418100d77d6eb30c4adb9098 Bud 7c0a10981060861722c0216fd6c01a9fd8b10accbd3d6a04dcde275896e82e8b Blossom 52c374af536a4621a65503b4350f7459e3d00f3ed4e3b941c3902c0d9af45f4a Redwood 8041acaf604df1ace1ad2a12fd020513e50dfdd09899dc2e455e622d41c91000 Sequoia 7c5a1b1ce27181145c7e37bf6ad323353c14e8db201cfa3cb336292ad9a5d03d Bristlecone 53b3a2b4307df9dfc05a4c9da977baa4a6fd822f5a3d24843f949d1c93398322 Stromatolite d30993594816cc6035041941291dc7a5862e55676ce85eef91f89fd0c59f2931 Primordial 1930d04a8a1d0aba6f97b19b7e7b87158ab154ebffd5468d6ada66671285968b"],
+        ["gifting", "Gifting", "Patron 5a2c578f82445956549c6454a2d65f8ba35b53f59120a4aa55855098ce5a653d Champion ac865fd339fbaa75d77278cd695936f168cd9b88dbbd72fdaeb76174bc0039d3 Luminary 35885be90179a2b4cc4e29aaf1285fe561c837f037aa805df40e921fd8db4867 Icon 70b46c1ea400bc57e2d5ac937c70b7ef25599feb1c62d7817c257f19051f1460 Hero 779d517e251fd2f6c4d64b4bf5839ea20cc5e061a2f971c7811ab2486ccf4553 Legendary eb5ce89c01c7884a614b5be0ebadb0d86215b61b55c04a01d27cffb131b4a070"],
+        ["streaming", "Streaming", "Newcomer 571a6f607289dfc034d5735ea020bb53f29e9d53dcc54ee852f9f070538ff73a Fledgling 3e1ec0a72ca812e53ecd53d55c18c2d9765cc89eee08b1e74f7e0bdbfe2e96a2 Breakout 443707ffced738635bb0ee5c054544c67ec9dfab63b03e661bc1295d5399cac7 Standout 522de4edcb75e0544633b9ccb55c58d672c4a2fa70a81231bd42bb56cd6555bd Trendsetter 9482ad3a1104986a4cce2979291c733eca0707f6218ddfb6ff36e32e3fd709e9 Headliner 2cf2a4ab39800a963efdb900b823dc8ccb23464434f3e11d329851ae566cac22 Star 20e0b4ff7fc63681efe95082a69f9bfe7259f1485fa6fa6cebaf709336f42b90 Sensation 7ceb7fc55dba1fd4c4c5a9acd8345e3b74bca789bf8503445f3bf89109ae47a4 Visionary 5fbabf24366e08c5f7a56219d7d39f29c41034b5bd091573600f07a904af0035 Phenomenon dd20ac476f0bb7ea9a553abc699c0d6b9854a3f802187e3bf9bf2e45c37a766a"],
+        ["game_time", "Game Time", "Casual c2844b37da74241525c1001c2ae5dd2719beb0095af8f88dcb35a37ceb0e1892 Recreational 157b789531c602542070e680c410d74275e796b6c45cd717292f6d2a59593972 Dedicated d6ab0696aae97fca8e6b2b88d4117f09f9ea895d4f0cebee770564369ff06873 Committed cc1edd8d955872cd9fbd9bafec80c973287817560d0895587686e3e1671a698e Serious 4039caeef586467d50939f3154f87828645d6f1bd699b8f0c1da686b02cefe68 Devoted 3d39b6cef7f00fe9e2d51f229034650b900481823af05d09e6537e912de30301 Seasoned 46512ce94203c84d7919904acfbd07fc5a8316010a610b8fd6a1cc937e5ac75e Ironclad 9bff716e6bae2ef42dc959bac05a0dfc480bf89484c111ed7fb4aa0332cb22d8 Unshakeable 1f51d59934543176d8b585c4e5a62d77ca3677c6e26ae4da74b1b639f9091b5e Eternal 8a62ba720addf7584d3e7f82170104e6a2b35aea4aba5ffc7260cfd706f40c37"],
+        ["game_variety", "Game Variety", "Sampler cbd75cae9bca1c49b35eb0d9c189af4c8604b4f69a1de17ae550db9f03cbd371 Dabbler c9fe2cefaf224c0fb73a5fe11476987930809fa307069deb8bbb2f0b99bac545 Enthusiast e016406cec55df228f6e4e7ee9ec5ac10cf0ccd5037c5926da5c26c44e32d374 Ranger 7265bc6f9ff0a47962dafe01b6f9c8f75927392aaf48d48c3619d123d2b584f5 Explorer ffd4938d41c57d27fec0f253a54756c40add56f761c5b1471b531d838e8669db Adventurer dcfdce8dfc254b6e8fa9cfba5dcd918f027e27554c3aa2403fe01eb319cf2194 Voyager 183d6521c3696b0b42f73dd9c319307490982a5dffdc34a923b760d82b20916a Maverick 84d4695cdcbb350ad5385c06e87caf06835872135625a8bff6bac300af858412 Polymath 1d8d9e3254727d1a1c01b194f2d01ade4525dc8b85c39b877af09768eaf031be Universalist 4731855cd51c1d45fd14dc088b80815ea0562a353b48db369092019fbcb44ec7"]
+    ];
+    TIERED.forEach(function (g) {
+        var parts = g[2].split(" ");
+        for (var i = 0; i < parts.length; i += 2) {
+            var n = i / 2 + 1;
+            var label = g[1] + ": " + parts[i] + (g[0] === "account_age" ? " (" + n + (n === 1 ? " year)" : " years)") : "");
+            BADGES.push(["ed_" + g[0] + "_" + n, label, CDN + "assets/content/" + parts[i + 1] + ".png"]);
+        }
+    });
+    BADGES.push(["ed_meadow", "Last Meadow Online", CDN + "badge-icons/ca105ad9cfc8580c765101d17bbb2323.png"]);
     var BADGE_BY_ID = {};
-    BADGES.forEach(function (b) { BADGE_BY_ID[b[0]] = b; });
+    var BADGE_SRC = {}; // our ids -> image link, for Discord's badge component
+    BADGES.forEach(function (b) {
+        BADGE_BY_ID[b[0]] = b;
+        if (b[0].indexOf("ed_") === 0) BADGE_SRC[b[0]] = b[2];
+    });
 
     function parse(key, fallback) {
         try {
@@ -185,7 +207,7 @@
     function ourBadges() {
         return st.badges.filter(function (id) { return BADGE_BY_ID[id]; }).map(function (id) {
             var b = BADGE_BY_ID[id];
-            return { id: b[0], description: b[1], icon: b[2] };
+            return BADGE_SRC[id] ? { id: id, description: b[1], icon: "dummy", iconSrc: BADGE_SRC[id] } : { id: b[0], description: b[1], icon: b[2] };
         });
     }
 
@@ -426,8 +448,8 @@
         return i.t || CDN + "media/v1/collectibles-shop/" + i.s + "/static";
     }
 
-    function badgeIcon(hash) {
-        return CDN + "badge-icons/" + hash + ".png";
+    function badgeIcon(icon) {
+        return /^https:/.test(icon) ? icon : CDN + "badge-icons/" + icon + ".png";
     }
 
     function avatarOf(u) {
@@ -478,7 +500,7 @@
                     sel[2] && h(RN.Image, { source: { uri: thumb(2, sel[2]) }, style: styles.plateImg, resizeMode: "cover" }),
                     h(RN.Text, { numberOfLines: 1, style: styles.bold }, name)),
                 shown.length > 0 && h(RN.View, { style: styles.badgeRow }, shown.map(function (b) {
-                    return b && b.icon ? h(RN.Image, { key: b.id, source: { uri: badgeIcon(b.icon) }, style: { width: 20, height: 20 } }) : null;
+                    return b && b.icon ? h(RN.Image, { key: b.id, source: { uri: b.iconSrc || badgeIcon(b.icon) }, style: { width: 20, height: 20 } }) : null;
                 }))),
             chips.length > 0 && h(RN.View, { style: styles.chips }, chips.map(function (c) {
                 return h(RN.View, { key: c, style: styles.chip }, h(RN.Text, { style: styles.muted, numberOfLines: 1 }, c));
@@ -772,6 +794,21 @@
                     if (!props || !isMe(props.userId) || !Array.isArray(r) || !badgesChanged()) return r;
                     return patched(r, function (real) { return mergeBadges(real); });
                 }));
+                // Our tiered badges: Discord's badge component draws them from their link, and keeps their ids
+                var pb = metro.findByName("ProfileBadge", false);
+                if (pb && typeof pb.default === "function") {
+                    unpatches.push(vendetta.patcher.before("default", pb, function (args) {
+                        var p = args[0];
+                        if (p && BADGE_SRC[p.id]) args[0] = Object.assign({}, p, { source: { uri: BADGE_SRC[p.id] } });
+                    }));
+                }
+                var ids = metro.findByProps("resolveProfileBadgeId");
+                ["resolveProfileBadgeId", "toProfileBadgeLegacyId"].forEach(function (k) {
+                    if (!ids || typeof ids[k] !== "function") return;
+                    unpatches.push(vendetta.patcher.instead(k, ids, function (a, orig) {
+                        return typeof a[0] === "string" && BADGE_SRC[a[0]] ? a[0] : orig.apply(this, a);
+                    }));
+                });
             });
             optional("Banners", function () {
                 var banners = metro.findByProps("getUserBannerURL");

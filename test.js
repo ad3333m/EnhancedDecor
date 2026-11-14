@@ -102,6 +102,7 @@ const text = n => [].concat(n.props.children).map(c => (c && c.props ? text(c) :
     await press("Badges");
     await press("Nitro");
     await press("Discord Staff");
+    await press("Account Age: Seed (1 year)");
     await press("Banner");
     await press("Paste link");
 
@@ -113,8 +114,10 @@ const text = n => [].concat(n.props.children).map(c => (c && c.props ? text(c) :
     assert.strictEqual(UserStore.getUser("2"), friend, "other users untouched");
     const p = UserProfileStore.getUserProfile("1");
     assert(p.profileEffect.skuId && p.premiumType === 2, "effect on profile");
-    assert.deepStrictEqual(p.badges.map(b => b.id), ["legacy_username", "premium", "staff"], "badges added after real ones");
-    assert.deepStrictEqual(useBadges.default({ userId: "1" }).map(b => b.id), ["legacy_username", "premium", "staff"], "useBadges too");
+    const want = ["legacy_username", "premium", "staff", "ed_account_age_1"];
+    assert.deepStrictEqual(p.badges.map(b => b.id), want, "badges added after real ones");
+    assert.deepStrictEqual(useBadges.default({ userId: "1" }).map(b => b.id), want, "useBadges too");
+    assert(/assets\/content\/8da9339b/.test(p.badges[3].iconSrc), "tiered badge carries its image link");
     assert.strictEqual(useBadges.default({ userId: "2" }).length, 0, "others' badges untouched");
     assert.strictEqual(banners.getUserBannerURL({ id: "1" }), "https://x.test/b.gif", "pasted banner trimmed and used");
     assert.strictEqual(banners.getUserBannerURL({ id: "2" }), "https://cdn/real-banner");
@@ -125,7 +128,7 @@ const text = n => [].concat(n.props.children).map(c => (c && c.props ? text(c) :
 
     await press("Badges");
     await TR.act(() => tree.root.findAll(n => n.type === "Switch")[0].props.onValueChange(true));
-    assert.deepStrictEqual(UserProfileStore.getUserProfile("1").badges.map(b => b.id), ["premium", "staff"], "hide real badges");
+    assert.deepStrictEqual(UserProfileStore.getUserProfile("1").badges.map(b => b.id), ["premium", "staff", "ed_account_age_1"], "hide real badges");
 
     await press("More");
     await TR.act(() => tree.root.findAll(n => n.type === "Switch")[0].props.onValueChange(false));
