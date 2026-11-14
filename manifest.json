@@ -1,0 +1,14 @@
+{
+    "name": "EnhancedDecor",
+    "description": "Wear any avatar decoration, profile effect, nameplate or profile frame from the whole Discord shop. Only you see it.",
+    "authors": [
+        {
+            "name": "ad3333m"
+        }
+    ],
+    "main": "index.js",
+    "hash": "36e0e20f734f1bb2e88241b538a23a21946dc733b09539caf09073aa39d64299",
+    "vendetta": {
+        "icon": "ic_profile_24px"
+    }
+}
