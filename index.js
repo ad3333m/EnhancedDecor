@@ -1,7 +1,7 @@
 (function () {
-    // EnhancedDecor: wear any avatar decoration, profile effect, nameplate or profile frame. Only you see it.
-    // Vendetta-format plugin (Endcord Mobile, Revenge, Kettu, Bunny). The loader runs `return <this file>`, so the
-    // file must start with "(" (a comment line first would return undefined). Hermes treats const/let as var and
+    // EnhancedDecor: wear any avatar decoration, profile effect, nameplate, profile frame, badge or banner. Only you
+    // see it. Vendetta-format plugin (Endcord Mobile, Revenge, Kettu, Bunny). The loader runs `return <this file>`, so
+    // the file must start with "(" (a comment line first would return undefined). Hermes treats const/let as var and
     // lacks async/classes, so this stays ES6 with var and promises.
     "use strict";
     var metro = vendetta.metro;
@@ -9,32 +9,83 @@
     var React = common.React;
     var RN = common.ReactNative;
     var h = React.createElement;
+    var after = vendetta.patcher.after;
     var storage = vendetta.plugin.storage;
     var log = vendetta.logger || console;
+    var G = typeof globalThis !== "undefined" ? globalThis : global;
 
+    var NAME = "EnhancedDecor";
     var CDN = "https://cdn.discordapp.com/";
     // Weekly dump of Discord's whole shop (litruv/discord-collectibles). The live shop is merged on top.
     var CATALOG = "https://github.com/litruv/discord-collectibles/releases/download/latest/";
     // Index = Discord's collectible item type: 0 decoration, 1 profile effect, 2 nameplate, 3 profile frame
     var TYPES = [
-        { label: "Decorations", file: "avatardecorations.json", cols: 4, aspect: 1 },
+        { label: "Decor", file: "avatardecorations.json", cols: 4, aspect: 1 },
         { label: "Effects", file: "profileeffects.json", cols: 3, aspect: 880 / 450 },
         { label: "Nameplates", file: "nameplate.json", cols: 1, aspect: 3 / 16 },
         { label: "Frames", cols: 3, aspect: 1 }
     ];
+    // Discord's own badge ids and icons, so Discord draws them like real ones
+    var BADGES = [
+        ["staff", "Discord Staff", "5e74e9b61934fc1f67c65515d1f7e60d"],
+        ["partner", "Partnered Server Owner", "3f9748e53446a137a052f3454e2de41e"],
+        ["certified_moderator", "Moderator Programs Alumni", "fee1624003e2fee35cb398e125dc479b"],
+        ["hypesquad", "HypeSquad Events", "bf01d1073931f921909045f3a39fd264"],
+        ["hypesquad_house_1", "HypeSquad Bravery", "8a88d63823d8a71cd5e390baa45efa02"],
+        ["hypesquad_house_2", "HypeSquad Brilliance", "011940fd013da3f7fb926e4a1cd2e618"],
+        ["hypesquad_house_3", "HypeSquad Balance", "3aa41de486fa12454c3761e8e223442e"],
+        ["bug_hunter_level_1", "Discord Bug Hunter", "2717692c7dca7289b35297368a940dd0"],
+        ["bug_hunter_level_2", "Discord Bug Hunter (Gold)", "848f79194d4be5ff5f81505cbd0ce1e6"],
+        ["active_developer", "Active Developer", "6bdc42827a38498929a4920da12695d9"],
+        ["verified_developer", "Early Verified Bot Developer", "6df5892e0f35b051f8b61eace34f4967"],
+        ["early_supporter", "Early Supporter", "7060786766c9c840eb3019e725d2b358"],
+        ["premium", "Nitro", "2ba85e8026a8614b640c2837bcdfe21b"],
+        ["premium_tenure_1_month_v2", "Nitro Bronze", "4f33c4a9c64ce221936bd256c356f91f"],
+        ["premium_tenure_3_month_v2", "Nitro Silver", "4514fab914bdbfb4ad2fa23df76121a6"],
+        ["premium_tenure_6_month_v2", "Nitro Gold", "2895086c18d5531d499862e41d1155a6"],
+        ["premium_tenure_12_month_v2", "Nitro Platinum", "0334688279c8359120922938dcb1d6f8"],
+        ["premium_tenure_24_month_v2", "Nitro Diamond", "0d61871f72bb9a33a7ae568c1fb4f20a"],
+        ["premium_tenure_36_month_v2", "Nitro Emerald", "11e2d339068b55d3a506cff34d3780f3"],
+        ["premium_tenure_60_month_v2", "Nitro Ruby", "cd5e2cfd9d7f27a8cdcd3e8a8d5dc9f4"],
+        ["premium_tenure_72_month_v2", "Nitro Opal", "5b154df19c53dce2af92c9b61e6be5e2"],
+        ["guild_booster_lvl1", "Server Booster (1 month)", "51040c70d4f20a921ad6674ff86fc95c"],
+        ["guild_booster_lvl2", "Server Booster (2 months)", "0e4080d1d333bc7ad29ef6528b6f2fb7"],
+        ["guild_booster_lvl3", "Server Booster (3 months)", "72bed924410c304dbe3d00a6e593ff59"],
+        ["guild_booster_lvl4", "Server Booster (6 months)", "df199d2050d3ed4ebf84d64ae83989f8"],
+        ["guild_booster_lvl5", "Server Booster (9 months)", "996b3e870e8a22ce519b3a50e6bdd52f"],
+        ["guild_booster_lvl6", "Server Booster (12 months)", "991c9f39ee33d7537d9f408c3e53141e"],
+        ["guild_booster_lvl7", "Server Booster (15 months)", "cb3ae83c15e970e8f3d410bc62cb8b99"],
+        ["guild_booster_lvl8", "Server Booster (18 months)", "7142225d31238f6387d9f09efaa02759"],
+        ["guild_booster_lvl9", "Server Booster (24 months)", "ec92202290b48d0879b7413d2dde3bab"],
+        ["legacy_username", "Originally known as", "6de6d34650760ba5551a79732e98ed60"],
+        ["quest_completed", "Completed a Quest", "7d9ae358c8c5e118768335dbe68b4fb8"],
+        ["orb_profile_badge", "Orbs Apprentice", "83d8a1eb09a8d64e59233eec5d4d5c2d"]
+    ];
+    var BADGE_BY_ID = {};
+    BADGES.forEach(function (b) { BADGE_BY_ID[b[0]] = b; });
 
-    function readJSON(key, fallback) {
+    function parse(key, fallback) {
         try {
             var v = JSON.parse(storage[key] || "null");
-            return Array.isArray(v) && v.length === 4 ? v : fallback;
+            return v == null ? fallback : v;
         } catch (e) {
             return fallback;
         }
     }
 
     // Everything ever seen stays, so items Discord pulls from the shop keep working
-    var cat = readJSON("catalog", [{}, {}, {}, {}]);
-    var sel = readJSON("selected", [null, null, null, null]);
+    var cat = parse("catalog", null);
+    if (!Array.isArray(cat) || cat.length !== 4) cat = [{}, {}, {}, {}];
+
+    var st = parse("state", {});
+    if (!Array.isArray(st.sel) || st.sel.length !== 4) st.sel = parse("selected", null); // v1 kept only this
+    if (!Array.isArray(st.sel) || st.sel.length !== 4) st.sel = [null, null, null, null];
+    if (!Array.isArray(st.badges)) st.badges = [];
+    st.hideBadges = !!st.hideBadges;
+    if (typeof st.banner !== "string") st.banner = "";
+    if (st.chatButton === undefined) st.chatButton = true;
+    var sel = st.sel;
+
     var version = 0;
     var loading = false;
     var listeners = [];
@@ -44,6 +95,14 @@
     function changed() {
         listeners.slice().forEach(function (fn) { fn(); });
     }
+
+    function toast(msg) {
+        try {
+            vendetta.ui.toasts.showToast(msg);
+        } catch (e) { }
+    }
+
+    // ---- catalog ----
 
     function add(type, item) {
         if (!item.s || !cat[type]) return;
@@ -55,6 +114,7 @@
         var urls = (it.assets || []).map(function (x) { return x.url || ""; }).join(" ");
         var item = { s: it.skuId, n: it.name };
         var m;
+        if (it.category) item.c = it.category;
         if (type === 0 && (m = /avatar-decoration-presets\/([^.?\s]+)/.exec(urls))) item.a = m[1];
         if (type === 2) {
             if ((m = /assets\/collectibles\/(\S+\/)static\.png/.exec(urls))) item.a = m[1];
@@ -103,7 +163,7 @@
         }
         var settled = jobs.map(function (p) {
             return p.then(function () { return true; }, function (e) {
-                log.warn("EnhancedDecor: a catalog source failed", e);
+                log.warn(NAME + ": a catalog source failed", e);
                 return false;
             });
         });
@@ -111,21 +171,33 @@
             loading = false;
             storage.catalog = JSON.stringify(cat);
             storage.fetchedAt = Date.now();
-            if (ok.indexOf(true) === -1) toast("EnhancedDecor: couldn't load the shop");
+            if (ok.indexOf(true) === -1) toast(NAME + ": couldn't load the shop");
             changed();
         });
-    }
-
-    function toast(msg) {
-        try {
-            vendetta.ui.toasts.showToast(msg);
-        } catch (e) { }
     }
 
     // ---- what Discord sees for your own account ----
 
     function decoration() {
         return sel[0] ? { asset: sel[0].a, skuId: sel[0].s, expiresAt: null } : null;
+    }
+
+    function ourBadges() {
+        return st.badges.filter(function (id) { return BADGE_BY_ID[id]; }).map(function (id) {
+            var b = BADGE_BY_ID[id];
+            return { id: b[0], description: b[1], icon: b[2] };
+        });
+    }
+
+    function mergeBadges(real) {
+        var ours = ourBadges();
+        var ids = ours.map(function (b) { return b.id; });
+        var kept = st.hideBadges || !Array.isArray(real) ? [] : real.filter(function (b) { return !b || ids.indexOf(b.id) === -1; });
+        return kept.concat(ours);
+    }
+
+    function badgesChanged() {
+        return st.badges.length > 0 || st.hideBadges;
     }
 
     function userProps(u) {
@@ -156,18 +228,22 @@
             p.profileEffect = { skuId: sel[1].s, expiresAt: null, expireAt: null };
         }
         if (sel[3]) p.profileFrame = { skuId: sel[3].s, expiresAt: null };
-        if ((sel[1] || sel[3]) && !prof.premiumType) p.premiumType = 2;
+        if (st.banner) p.banner = "enhanced_decor"; // any value: the link comes from getUserBannerURL
+        if (badgesChanged()) p.badges = mergeBadges(prof.badges);
+        if ((sel[1] || sel[3] || st.banner) && !prof.premiumType) p.premiumType = 2;
         return Object.keys(p).length ? p : null;
     }
 
-    // Discord's records are shared, so hand back a copy with our fields instead of changing them
+    // Discord's records are shared, so hand back a copy with our fields instead of changing them. Same source and
+    // version give the same copy, so screens comparing what a store returns don't redraw for nothing.
     function patched(src, build) {
         if (!src || typeof src !== "object") return src;
         var hit = cache.get(src);
         if (hit && hit.v === version) return hit.c;
         var props = build(src);
         var c = src;
-        if (props) {
+        if (props && Array.isArray(src)) c = props;
+        else if (props) {
             c = Object.create(Object.getPrototypeOf(src));
             Reflect.ownKeys(src).forEach(function (k) {
                 var d = Object.getOwnPropertyDescriptor(src, k);
@@ -186,9 +262,13 @@
 
     var UserStore, ProfileStore;
 
+    function me() {
+        return UserStore && UserStore.getCurrentUser();
+    }
+
     function isMe(id) {
-        var me = UserStore.getCurrentUser();
-        return !!me && me.id === id;
+        var u = me();
+        return !!u && !!id && u.id === id;
     }
 
     function redraw() {
@@ -200,14 +280,102 @@
         });
     }
 
-    function choose(type, item) {
-        sel[type] = item ? { s: item.s, n: item.n, a: item.a, p: item.p, t: item.t } : null;
-        storage.selected = JSON.stringify(sel);
+    function save() {
+        storage.state = JSON.stringify(st);
         redraw();
         changed();
     }
 
-    // ---- picker ----
+    function choose(type, item) {
+        sel[type] = item ? { s: item.s, n: item.n, a: item.a, p: item.p, t: item.t } : null;
+        save();
+    }
+
+    function toggleBadge(id) {
+        var i = st.badges.indexOf(id);
+        if (i === -1) st.badges.push(id);
+        else st.badges.splice(i, 1);
+        save();
+    }
+
+    function setBanner(url) {
+        url = String(url || "").trim();
+        if (url && !/^https:\/\/\S+$/i.test(url)) return toast("Banner needs an https:// image link");
+        st.banner = url;
+        save();
+    }
+
+    function resetAll() {
+        [0, 1, 2, 3].forEach(function (i) { sel[i] = null; });
+        st.badges = [];
+        st.hideBadges = false;
+        st.banner = "";
+        save();
+    }
+
+    // ---- finding Discord's parts ----
+
+    function findFile(path) {
+        try {
+            var b = G.bunny;
+            return b && b.metro && typeof b.metro.findByFilePath === "function" ? b.metro.findByFilePath(path) : undefined;
+        } catch (e) {
+            return undefined;
+        }
+    }
+
+    // A component's render, whatever form it's exported in: function, memo, forwardRef, memo of forwardRef (iOS)
+    function afterRender(mod, key, cb) {
+        var c = mod && mod[key];
+        var wrap = function (a, res) { return cb(res); };
+        if (typeof c === "function") return after(key, mod, wrap);
+        if (c && typeof c.type === "function") return after("type", c, wrap);
+        if (c && c.type && typeof c.type.render === "function") return after("render", c.type, wrap);
+        if (c && typeof c.render === "function") return after("render", c, wrap);
+        return null;
+    }
+
+    function icon(names) {
+        for (var i = 0; i < names.length; i++) {
+            var m = findFile("design/components/Icon/native/redesign/generated/" + names[i] + ".tsx");
+            if (m && m[names[i]]) return m[names[i]];
+            var p = metro.findByProps(names[i]);
+            if (p && p[names[i]]) return p[names[i]];
+        }
+        return null;
+    }
+
+    function assetId(names) {
+        for (var i = 0; i < names.length; i++) {
+            try {
+                var id = vendetta.ui.assets.getAssetIDByName(names[i]);
+                if (id) return id;
+            } catch (e) { }
+        }
+        return undefined;
+    }
+
+    function openPage(navigation) {
+        var render = function () { return h(Page, null); };
+        if (navigation && typeof navigation.push === "function") {
+            try {
+                navigation.push("BUNNY_CUSTOM_PAGE", { title: NAME, render: render });
+                return;
+            } catch (e) { }
+        }
+        var modals = metro.findByProps("pushLazy");
+        var nav = metro.findByProps("Navigator", "getHeaderCloseButton");
+        if (!modals || typeof modals.push !== "function" || !nav) return toast(NAME + ": couldn't open the page");
+        var close = function () { modals.pop(); };
+        modals.push(function () {
+            return h(nav.Navigator, {
+                initialRouteName: "ENHANCED_DECOR",
+                screens: { ENHANCED_DECOR: { title: NAME, headerLeft: nav.getHeaderCloseButton(close), render: render } }
+            });
+        });
+    }
+
+    // ---- page ----
 
     var SC = vendetta.ui.semanticColors || {};
     function color() {
@@ -216,44 +384,58 @@
     }
     var BRAND = "#5865f2";
     var GAP = 8;
+    var TEXT = color("TEXT_DEFAULT", "TEXT_NORMAL", "#dbdee1");
+    var MUTED = color("TEXT_MUTED", "TEXT_SUBTLE", "#949ba4");
+    var CARD = color("BACKGROUND_SECONDARY", "BACKGROUND_BASE_LOWER", "#2b2d31");
+    var TILE = color("BACKGROUND_MOD_SUBTLE", "BACKGROUND_MOD_NORMAL", "BACKGROUND_SECONDARY_ALT", "#313338");
+    var BORDER = color("BORDER_SUBTLE", "BACKGROUND_MOD_STRONG", "BACKGROUND_MODIFIER_ACCENT", "#4e5058");
     var styles = common.stylesheet.createThemedStyleSheet({
-        page: { padding: 12 },
-        text: { color: color("TEXT_DEFAULT", "TEXT_NORMAL", "#dbdee1"), fontSize: 14 },
-        muted: { color: color("TEXT_MUTED", "TEXT_SUBTLE", "#949ba4"), fontSize: 12 },
-        row: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 10 },
-        pill: {
-            paddingHorizontal: 12,
-            paddingVertical: 6,
-            borderRadius: 99,
-            borderWidth: 1.5,
-            borderColor: color("BORDER_SUBTLE", "BACKGROUND_MOD_STRONG", "BACKGROUND_MODIFIER_ACCENT", "#4e5058"),
-            backgroundColor: color("BACKGROUND_MOD_SUBTLE", "BACKGROUND_MOD_NORMAL", "BACKGROUND_SECONDARY", "#2b2d31")
-        },
+        page: { flex: 1, padding: 12, gap: 10 },
+        text: { color: TEXT, fontSize: 14 },
+        bold: { color: TEXT, fontSize: 16, fontWeight: "700" },
+        muted: { color: MUTED, fontSize: 12 },
+        card: { borderRadius: 16, overflow: "hidden", backgroundColor: CARD, borderWidth: 1, borderColor: BORDER },
+        banner: { height: 92, backgroundColor: BRAND },
+        avatarWrap: { position: "absolute", left: 14, top: 52, width: 76, height: 76, alignItems: "center", justifyContent: "center" },
+        avatar: { width: 68, height: 68, borderRadius: 34, borderWidth: 4, borderColor: CARD },
+        avatarDecor: { position: "absolute", width: 82, height: 82 },
+        cardBody: { paddingTop: 8, paddingBottom: 12, paddingLeft: 102, paddingRight: 12, minHeight: 74, gap: 6 },
+        plate: { height: 34, borderRadius: 8, overflow: "hidden", justifyContent: "center", paddingHorizontal: 10 },
+        plateImg: { position: "absolute", left: 0, top: 0, right: 0, bottom: 0 },
+        badgeRow: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+        chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 12, paddingBottom: 12 },
+        chip: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 99, backgroundColor: TILE },
+        reset: { position: "absolute", right: 10, top: 10, paddingHorizontal: 11, paddingVertical: 5, borderRadius: 99, backgroundColor: "rgba(0,0,0,0.45)" },
+        resetText: { color: "#ffffff", fontSize: 12, fontWeight: "600" },
+        tabs: { gap: 6, paddingRight: 12 },
+        pill: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 99, borderWidth: 1.5, borderColor: BORDER, backgroundColor: TILE },
         on: { borderColor: BRAND, backgroundColor: "rgba(88, 101, 242, 0.25)" },
-        input: {
-            color: color("TEXT_DEFAULT", "TEXT_NORMAL", "#dbdee1"),
-            borderRadius: 10,
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            marginBottom: 10,
-            backgroundColor: color("BACKGROUND_MOD_SUBTLE", "BACKGROUND_MOD_NORMAL", "BACKGROUND_SECONDARY", "#2b2d31")
-        },
-        tile: {
-            borderRadius: 10,
-            borderWidth: 1.5,
-            overflow: "hidden",
-            alignItems: "center",
-            justifyContent: "center",
-            borderColor: color("BORDER_SUBTLE", "BACKGROUND_MOD_STRONG", "BACKGROUND_MODIFIER_ACCENT", "#4e5058"),
-            backgroundColor: color("BACKGROUND_MOD_SUBTLE", "BACKGROUND_MOD_NORMAL", "BACKGROUND_SECONDARY", "#2b2d31")
-        },
-        name: { fontSize: 11, textAlign: "center", paddingHorizontal: 4, paddingVertical: 3 }
+        input: { color: TEXT, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, backgroundColor: TILE, borderWidth: 1, borderColor: BORDER },
+        tile: { borderRadius: 14, borderWidth: 1.5, overflow: "hidden", alignItems: "center", borderColor: BORDER, backgroundColor: TILE },
+        check: { position: "absolute", right: 5, top: 5, width: 20, height: 20, borderRadius: 10, backgroundColor: BRAND, alignItems: "center", justifyContent: "center" },
+        checkText: { color: "#ffffff", fontSize: 12, fontWeight: "700" },
+        name: { color: TEXT, fontSize: 11, fontWeight: "600", textAlign: "center", paddingHorizontal: 4, paddingTop: 4 },
+        sub: { color: MUTED, fontSize: 10, textAlign: "center", paddingHorizontal: 4, paddingBottom: 5 },
+        row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10, padding: 12, borderRadius: 12, backgroundColor: TILE },
+        buttons: { flexDirection: "row", flexWrap: "wrap", gap: 8 }
     });
 
     function thumb(type, i) {
-        if (type === 0) return CDN + "avatar-decoration-presets/" + i.a + ".png?size=96&passthrough=false";
+        if (type === 0) return CDN + "avatar-decoration-presets/" + i.a + ".png?size=160&passthrough=true";
         if (type === 2) return CDN + "assets/collectibles/" + i.a + "static.png";
         return i.t || CDN + "media/v1/collectibles-shop/" + i.s + "/static";
+    }
+
+    function badgeIcon(hash) {
+        return CDN + "badge-icons/" + hash + ".png";
+    }
+
+    function avatarOf(u) {
+        try {
+            var url = u.getAvatarURL(undefined, 128, true);
+            if (typeof url === "string") return url;
+        } catch (e) { }
+        return CDN + "embed/avatars/0.png";
     }
 
     // Snowflakes: newest first
@@ -261,103 +443,346 @@
         return a.s.length !== b.s.length ? b.s.length - a.s.length : (a.s < b.s ? 1 : a.s > b.s ? -1 : 0);
     }
 
-    function Pill(props) {
-        return h(RN.Pressable, { onPress: props.onPress, style: [styles.pill, props.on && styles.on] },
-            h(RN.Text, { style: styles.text }, props.label));
-    }
-
-    var NONE = { s: "", n: "None" };
-
-    function Settings() {
-        var tabState = React.useState(0), tab = tabState[0], setTab = tabState[1];
-        var qState = React.useState(""), q = qState[0], setQ = qState[1];
-        var tickState = React.useState(0), tick = tickState[0], setTick = tickState[1];
-        var dims = RN.useWindowDimensions();
-
+    function useTick() {
+        var s = React.useState(0);
         React.useEffect(function () {
-            var fn = function () { setTick(function (x) { return x + 1; }); };
+            var fn = function () { s[1](function (x) { return x + 1; }); };
             listeners.push(fn);
-            var stale = Date.now() - (Number(storage.fetchedAt) || 0) > 12 * 3600 * 1000;
-            if (stale || !Object.keys(cat[0]).length) refresh();
             return function () { listeners.splice(listeners.indexOf(fn), 1); };
         }, []);
+        return s[0];
+    }
 
+    function Pill(p) {
+        return h(RN.Pressable, { onPress: p.onPress, style: [styles.pill, p.on && styles.on] },
+            h(RN.Text, { style: styles.text }, p.label));
+    }
+
+    function Preview() {
+        var u = me();
+        var name = u ? u.globalName || u.username : "You";
+        var shown = mergeBadges(u ? realBadges(u.id) : []);
+        var chips = [];
+        if (sel[1]) chips.push("Effect: " + sel[1].n);
+        if (sel[3]) chips.push("Frame: " + sel[3].n);
+        return h(RN.View, { style: styles.card },
+            st.banner
+                ? h(RN.Image, { source: { uri: st.banner }, style: styles.banner, resizeMode: "cover" })
+                : h(RN.View, { style: styles.banner }),
+            h(RN.Pressable, { style: styles.reset, onPress: resetAll }, h(RN.Text, { style: styles.resetText }, "Reset all")),
+            h(RN.View, { style: styles.avatarWrap },
+                h(RN.Image, { source: { uri: u ? avatarOf(u) : CDN + "embed/avatars/0.png" }, style: styles.avatar }),
+                sel[0] && h(RN.Image, { source: { uri: thumb(0, sel[0]) }, style: styles.avatarDecor })),
+            h(RN.View, { style: styles.cardBody },
+                h(RN.View, { style: styles.plate },
+                    sel[2] && h(RN.Image, { source: { uri: thumb(2, sel[2]) }, style: styles.plateImg, resizeMode: "cover" }),
+                    h(RN.Text, { numberOfLines: 1, style: styles.bold }, name)),
+                shown.length > 0 && h(RN.View, { style: styles.badgeRow }, shown.map(function (b) {
+                    return b && b.icon ? h(RN.Image, { key: b.id, source: { uri: badgeIcon(b.icon) }, style: { width: 20, height: 20 } }) : null;
+                }))),
+            chips.length > 0 && h(RN.View, { style: styles.chips }, chips.map(function (c) {
+                return h(RN.View, { key: c, style: styles.chip }, h(RN.Text, { style: styles.muted, numberOfLines: 1 }, c));
+            })));
+    }
+
+    // Your real badges, from the profile Discord already has (before our changes)
+    var rawProfile = null;
+    function realBadges(id) {
+        try {
+            var p = rawProfile && rawProfile(id);
+            return p && Array.isArray(p.badges) ? p.badges : [];
+        } catch (e) {
+            return [];
+        }
+    }
+
+    var Tile = React.memo(function Tile(p) {
+        var item = p.item;
+        return h(RN.Pressable, { onPress: function () { p.onPick(item); }, style: [styles.tile, { width: p.width }, p.on && styles.on] },
+            item.none
+                ? h(RN.View, { style: { height: p.imgH, justifyContent: "center" } }, h(RN.Text, { style: [styles.muted, { fontSize: 26 }] }, "⊘"))
+                : h(RN.Image, { source: { uri: p.uri }, style: { width: p.width, height: p.imgH }, resizeMode: p.cover ? "cover" : "contain" }),
+            h(RN.Text, { numberOfLines: 1, style: styles.name }, item.n),
+            item.c ? h(RN.Text, { numberOfLines: 1, style: styles.sub }, item.c) : h(RN.View, { style: { height: 5 } }),
+            p.on && !item.none && h(RN.View, { style: styles.check }, h(RN.Text, { style: styles.checkText }, "✓")));
+    });
+
+    var NONE = { s: "", n: "None", none: true };
+
+    function Grid(p) {
+        var type = p.type;
+        var tick = p.tick;
+        var qs = React.useState("");
+        var q = qs[0];
+        var width = p.width;
+        var t = TYPES[type];
         var list = React.useMemo(function () {
             var needle = q.trim().toLowerCase();
-            var all = Object.keys(cat[tab]).map(function (k) { return cat[tab][k]; });
-            if (needle) all = all.filter(function (i) { return String(i.n).toLowerCase().indexOf(needle) !== -1; });
+            var all = Object.keys(cat[type]).map(function (k) { return cat[type][k]; });
+            if (needle) {
+                all = all.filter(function (i) {
+                    return (String(i.n) + " " + (i.c || "")).toLowerCase().indexOf(needle) !== -1;
+                });
+            }
             return [NONE].concat(all.sort(newestFirst));
-        }, [tab, q, tick]);
-
-        var type = TYPES[tab];
-        var width = (dims.width - 24 - GAP * (type.cols - 1)) / type.cols;
-        var imgH = Math.round(width * type.aspect);
-        var chosen = sel[tab];
-
-        function renderItem(info) {
-            var item = info.item;
-            var on = item === NONE ? !chosen : !!chosen && chosen.s === item.s;
-            return h(RN.Pressable, {
-                onPress: function () { choose(tab, item === NONE || on ? null : item); },
-                style: [styles.tile, { width: width }, on && styles.on]
-            },
-                item === NONE
-                    ? h(RN.View, { style: { height: imgH, justifyContent: "center" } }, h(RN.Text, { style: styles.text }, "None"))
-                    : h(RN.Image, { source: { uri: thumb(tab, item) }, style: { width: width, height: imgH }, resizeMode: "contain" }),
-                h(RN.Text, { numberOfLines: 1, style: [styles.muted, styles.name] }, item.n));
-        }
-
-        var count = list.length - 1;
-        return h(RN.View, { style: styles.page },
-            h(RN.View, { style: styles.row }, TYPES.map(function (t, i) {
-                return h(Pill, { key: t.label, label: t.label, on: i === tab, onPress: function () { setTab(i); } });
-            })),
-            h(RN.Text, { style: [styles.muted, { marginBottom: 8 }] },
-                (chosen ? "Wearing: " + chosen.n : "Wearing: nothing") + "  ·  " + count + " items" + (loading ? "  ·  loading…" : "")),
+        }, [type, q, tick]);
+        var w = (width - GAP * (t.cols - 1)) / t.cols;
+        var imgH = Math.round(w * t.aspect);
+        var chosen = sel[type];
+        var pick = React.useCallback(function (item) {
+            var on = item.none ? !chosen : !!chosen && chosen.s === item.s;
+            choose(type, item.none || on ? null : item);
+        }, [type, chosen]);
+        return h(RN.View, { style: { flex: 1, gap: 10 } },
             h(RN.TextInput, {
                 value: q,
-                onChangeText: setQ,
-                placeholder: "Search " + type.label.toLowerCase(),
+                onChangeText: qs[1],
+                placeholder: "Search " + (list.length - 1) + " " + t.label.toLowerCase() + (loading ? " (loading…)" : ""),
                 placeholderTextColor: "#949ba4",
+                autoCorrect: false,
                 style: styles.input
             }),
+            h(RN.FlatList, {
+                key: "t" + type,
+                style: { flex: 1 },
+                data: list,
+                numColumns: t.cols,
+                keyExtractor: function (i) { return i.s || "none"; },
+                renderItem: function (info) {
+                    var item = info.item;
+                    var on = item.none ? !chosen : !!chosen && chosen.s === item.s;
+                    return h(Tile, { item: item, on: on, width: w, imgH: imgH, uri: item.none ? null : thumb(type, item), cover: type === 2, onPick: pick });
+                },
+                extraData: chosen,
+                nestedScrollEnabled: true,
+                keyboardShouldPersistTaps: "handled",
+                columnWrapperStyle: t.cols > 1 ? { gap: GAP } : undefined,
+                contentContainerStyle: { gap: GAP, paddingBottom: 60 },
+                initialNumToRender: 24,
+                windowSize: 7,
+                removeClippedSubviews: true
+            }));
+    }
+
+    function Badges(p) {
+        var cols = 4;
+        var w = (p.width - GAP * (cols - 1)) / cols;
+        return h(RN.View, { style: { flex: 1, gap: 10 } },
             h(RN.View, { style: styles.row },
-                h(Pill, { label: "Refresh shop", onPress: function () { refresh(); } }),
-                h(Pill, { label: "Remove all", onPress: function () { [0, 1, 2, 3].forEach(function (i) { sel[i] = null; }); choose(0, null); } })),
-            h(RN.View, { style: { height: Math.round(dims.height * 0.62) } },
-                h(RN.FlatList, {
-                    key: "t" + tab,
-                    data: list,
-                    numColumns: type.cols,
-                    keyExtractor: function (i) { return i.s || "none"; },
-                    renderItem: renderItem,
-                    nestedScrollEnabled: true,
-                    columnWrapperStyle: type.cols > 1 ? { gap: GAP } : undefined,
-                    contentContainerStyle: { gap: GAP, paddingBottom: 40 },
-                    initialNumToRender: 24,
-                    windowSize: 7,
-                    removeClippedSubviews: true
-                })));
+                h(RN.View, { style: { flex: 1 } },
+                    h(RN.Text, { style: styles.text }, "Hide my real badges"),
+                    h(RN.Text, { style: styles.muted }, "Show only the ones you pick")),
+                h(RN.Switch, { value: st.hideBadges, onValueChange: function (v) { st.hideBadges = v; save(); } })),
+            h(RN.FlatList, {
+                style: { flex: 1 },
+                data: BADGES,
+                numColumns: cols,
+                keyExtractor: function (b) { return b[0]; },
+                extraData: p.tick,
+                columnWrapperStyle: { gap: GAP },
+                contentContainerStyle: { gap: GAP, paddingBottom: 60 },
+                nestedScrollEnabled: true,
+                renderItem: function (info) {
+                    var b = info.item;
+                    var on = st.badges.indexOf(b[0]) !== -1;
+                    return h(RN.Pressable, { onPress: function () { toggleBadge(b[0]); }, style: [styles.tile, { width: w, paddingTop: 12 }, on && styles.on] },
+                        h(RN.Image, { source: { uri: badgeIcon(b[2]) }, style: { width: 32, height: 32 } }),
+                        h(RN.Text, { numberOfLines: 2, style: [styles.name, { paddingBottom: 8 }] }, b[1]),
+                        on && h(RN.View, { style: styles.check }, h(RN.Text, { style: styles.checkText }, "✓")));
+                }
+            }));
+    }
+
+    function Banner() {
+        var vs = React.useState(st.banner);
+        var v = vs[0];
+        function paste() {
+            try {
+                common.clipboard.getString().then(function (s) {
+                    vs[1](String(s || "").trim());
+                    setBanner(s);
+                });
+            } catch (e) {
+                toast("Couldn't read the clipboard");
+            }
+        }
+        return h(RN.ScrollView, { style: { flex: 1 }, contentContainerStyle: { gap: 10, paddingBottom: 60 }, keyboardShouldPersistTaps: "handled" },
+            h(RN.Text, { style: styles.muted }, "Paste a link to any image or GIF. It shows as your banner on your profile, only on this phone."),
+            h(RN.TextInput, {
+                value: v,
+                onChangeText: vs[1],
+                onSubmitEditing: function () { setBanner(v); },
+                placeholder: "https://…/banner.gif",
+                placeholderTextColor: "#949ba4",
+                autoCapitalize: "none",
+                autoCorrect: false,
+                keyboardType: "url",
+                returnKeyType: "done",
+                style: styles.input
+            }),
+            h(RN.View, { style: styles.buttons },
+                h(Pill, { label: "Paste link", onPress: paste }),
+                h(Pill, { label: "Use it", on: true, onPress: function () { setBanner(v); } }),
+                h(Pill, { label: "Remove", onPress: function () { vs[1](""); setBanner(""); } })),
+            st.banner ? h(RN.Image, { source: { uri: st.banner }, style: { width: "100%", height: 140, borderRadius: 14 }, resizeMode: "cover" }) : null);
+    }
+
+    function More() {
+        var counts = TYPES.map(function (t, i) { return Object.keys(cat[i]).length + " " + t.label.toLowerCase(); }).join(", ");
+        return h(RN.ScrollView, { style: { flex: 1 }, contentContainerStyle: { gap: 10, paddingBottom: 60 } },
+            h(RN.View, { style: styles.row },
+                h(RN.View, { style: { flex: 1 } },
+                    h(RN.Text, { style: styles.text }, "Button in the chat bar"),
+                    h(RN.Text, { style: styles.muted }, "Opens " + NAME + " from any chat")),
+                h(RN.Switch, { value: !!st.chatButton, onValueChange: function (v) { st.chatButton = v; save(); } })),
+            h(RN.View, { style: styles.buttons },
+                h(Pill, { label: loading ? "Loading shop…" : "Refresh shop", onPress: function () { refresh(); } }),
+                h(Pill, { label: "Reset everything", onPress: resetAll })),
+            h(RN.Text, { style: styles.muted }, "Catalog: " + counts + "."),
+            h(RN.Text, { style: styles.muted }, "Everything here only changes what this phone shows. Other people still see your real profile."),
+            h(RN.Text, { style: styles.muted }, "Also in Settings → " + NAME + "."));
+    }
+
+    var TABS = ["Decor", "Effects", "Nameplates", "Frames", "Badges", "Banner", "More"];
+
+    function Page() {
+        var tick = useTick();
+        var ts = React.useState(0);
+        var tab = ts[0];
+        var dims = RN.useWindowDimensions();
+        var width = dims.width - 24;
+
+        React.useEffect(function () {
+            var stale = Date.now() - (Number(storage.fetchedAt) || 0) > 12 * 3600 * 1000;
+            if (stale || !Object.keys(cat[0]).length) refresh();
+        }, []);
+
+        var body = tab < 4 ? h(Grid, { key: "g" + tab, type: tab, tick: tick, width: width })
+            : tab === 4 ? h(Badges, { tick: tick, width: width })
+                : tab === 5 ? h(Banner, null)
+                    : h(More, null);
+
+        return h(RN.View, { style: [styles.page, { minHeight: Math.round(dims.height * 0.8) }] },
+            h(Preview, null),
+            h(RN.View, null,
+                h(RN.ScrollView, { horizontal: true, showsHorizontalScrollIndicator: false, contentContainerStyle: styles.tabs },
+                    TABS.map(function (label, i) {
+                        return h(Pill, { key: label, label: label, on: i === tab, onPress: function () { ts[1](i); } });
+                    }))),
+            body);
+    }
+
+    function Settings() {
+        var navigation = null;
+        try {
+            navigation = common.NavigationNative.useNavigation();
+        } catch (e) { }
+        return h(RN.View, { style: { padding: 12, gap: 10 } },
+            h(RN.Pressable, { style: [styles.pill, styles.on, { alignItems: "center", paddingVertical: 12 }], onPress: function () { openPage(navigation); } },
+                h(RN.Text, { style: styles.bold }, "Open " + NAME)),
+            h(RN.Text, { style: styles.muted }, "Also opens from the ✨ button in the chat bar, and from Settings → " + NAME + "."));
+    }
+
+    // ---- entry points: chat bar button, Settings row ----
+
+    function addChatButton() {
+        var Btn = findFile("modules/chat_input/native/action_buttons/ChatInputActionButton.tsx");
+        Btn = Btn && Btn.default;
+        var Icon = icon(["SparklesIcon", "PaintPaletteIcon", "StarIcon", "PencilIcon"]);
+        var actions = findFile("modules/chat_input/native/action_buttons/ChatInputActions.tsx");
+        if (!Btn || !Icon || !actions) return log.warn(NAME + ": chat bar not found, no button there");
+        var ChatButton = function () {
+            return h(Btn, { accessibilityLabel: NAME, IconComponent: Icon, onPress: function () { openPage(); } });
+        };
+        var un = afterRender(actions, "default", function (tree) {
+            try {
+                var node = vendetta.utils.findInReactTree(tree, function (n) { return n && n.props && Array.isArray(n.props.children); });
+                if (!node) return tree;
+                var kids = node.props.children;
+                var at = kids.findIndex(function (c) { return c && c.key === "enhanced-decor"; });
+                if (at !== -1) kids.splice(at, 1);
+                if (st.chatButton) kids.push(h(ChatButton, { key: "enhanced-decor" }));
+            } catch (e) {
+                log.error(NAME + ": chat bar button failed", e);
+            }
+            return tree;
+        });
+        if (un) unpatches.push(un);
+    }
+
+    function addSettingsRow() {
+        var ui = G.bunny && G.bunny.ui && G.bunny.ui.settings;
+        if (!ui || typeof ui.registerSection !== "function") return;
+        unpatches.push(ui.registerSection({
+            name: NAME,
+            items: [{
+                key: "ENHANCED_DECOR",
+                title: function () { return NAME; },
+                icon: assetId(["ic_profile_24px", "UserIcon", "ic_person"]),
+                render: function () { return Promise.resolve({ default: Page }); }
+            }]
+        }));
+    }
+
+    function optional(what, fn) {
+        try {
+            fn();
+        } catch (e) {
+            log.warn(NAME + ": " + what + " unavailable", e);
+        }
     }
 
     return {
         onLoad: function () {
             UserStore = metro.findByStoreName("UserStore");
             ProfileStore = metro.findByStoreName("UserProfileStore");
-            if (!UserStore) throw new Error("EnhancedDecor: Discord's UserStore wasn't found");
-            var after = vendetta.patcher.after;
+            if (!UserStore) throw new Error(NAME + ": Discord's UserStore wasn't found");
             unpatches.push(after("getCurrentUser", UserStore, function (a, r) { return patched(r, userProps); }));
             unpatches.push(after("getUser", UserStore, function (a, r) { return r && isMe(a[0]) ? patched(r, userProps) : r; }));
-            if (ProfileStore) {
+            if (ProfileStore && typeof ProfileStore.getUserProfile === "function") {
+                var original = ProfileStore.getUserProfile;
+                rawProfile = function (id) { return original.call(ProfileStore, id); };
                 ["getUserProfile", "getGuildMemberProfile"].forEach(function (fn) {
                     if (typeof ProfileStore[fn] !== "function") return;
                     unpatches.push(after(fn, ProfileStore, function (a, r) { return r && isMe(a[0]) ? patched(r, profileProps) : r; }));
                 });
             }
+            optional("Badges", function () {
+                var mod = metro.findByName("useBadges", false);
+                if (!mod || typeof mod.default !== "function") return;
+                unpatches.push(after("default", mod, function (a, r) {
+                    var props = a[0];
+                    if (!props || !isMe(props.userId) || !Array.isArray(r) || !badgesChanged()) return r;
+                    return patched(r, function (real) { return mergeBadges(real); });
+                }));
+            });
+            optional("Banners", function () {
+                var banners = metro.findByProps("getUserBannerURL");
+                if (banners) {
+                    unpatches.push(after("getUserBannerURL", banners, function (a, url) {
+                        var arg = a[0];
+                        return st.banner && arg && isMe(arg.id || arg.userId) ? st.banner : url;
+                    }));
+                }
+                var DP = findFile("modules/user_profile/DisplayProfile.tsx");
+                DP = DP && DP.default;
+                if (DP && DP.prototype && typeof DP.prototype.getBannerURL === "function") {
+                    unpatches.push(after("getBannerURL", DP.prototype, function (a, url) {
+                        return st.banner && isMe(this && this.userId) ? st.banner : url;
+                    }));
+                }
+            });
+            optional("Chat bar button", addChatButton);
+            optional("Settings row", addSettingsRow);
             redraw();
         },
         onUnload: function () {
-            unpatches.splice(0).forEach(function (u) { u(); });
+            unpatches.splice(0).forEach(function (u) {
+                try {
+                    u();
+                } catch (e) { }
+            });
+            rawProfile = null;
             redraw();
         },
         settings: Settings
