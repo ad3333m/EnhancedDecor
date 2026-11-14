@@ -20,7 +20,8 @@ const friend = new UserRecord({ id: "2", username: "friend" });
 const realBadge = { id: "legacy_username", description: "real", icon: "6de6d34650760ba5551a79732e98ed60" };
 const myProfile = { userId: "1", premiumType: 0, badges: [realBadge] };
 const emits = [];
-const UserStore = { getCurrentUser: () => me, getUser: id => ({ 1: me, 2: friend })[id], emitChange: () => emits.push("u") };
+let current = me;
+const UserStore = { getCurrentUser: () => current, getUser: id => ({ 1: me, 2: friend })[id], emitChange: () => emits.push("u") };
 const UserProfileStore = { getUserProfile: id => (id === "1" ? myProfile : { userId: id }), emitChange: () => emits.push("p") };
 const useBadges = { default: ({ userId }) => (userId === "1" ? [realBadge] : []) };
 const banners = { getUserBannerURL: () => "https://cdn/real-banner" };
@@ -127,8 +128,9 @@ const text = n => [].concat(n.props.children).map(c => (c && c.props ? text(c) :
     assert.strictEqual(friend.getAvatarURL(), "https://cdn/avatar/2");
     assert.strictEqual(new RowManager().generate({ message: { id: "m", author: me } }).message.avatarURL, gif, "chat rows");
     assert.strictEqual(new RowManager().generate({ message: { id: "m", author: friend } }).message.avatarURL, "https://cdn/avatar/2");
-    assert.strictEqual(JSON.parse(storage.state).avatar, "local", "photo kept out of the state");
-    assert.strictEqual(storage.img_avatar, gif);
+    assert.strictEqual(JSON.parse(storage.look_1).avatar, "local", "photo kept out of the look");
+    assert.strictEqual(storage.lookimg_1_avatar, gif);
+    assert(storage.state === undefined && storage.selected === undefined, "the old shared look moved to this account");
 
     const u = UserStore.getCurrentUser();
     assert(u instanceof UserRecord && u.getAvatarURL() === gif, "clone keeps class methods");
@@ -185,7 +187,7 @@ const text = n => [].concat(n.props.children).map(c => (c && c.props ? text(c) :
     assert.strictEqual(MultiAccountStore.getUsers()[0].globalName, "Cool Adam", "account switcher");
     assert.strictEqual(MultiAccountStore.getUsers()[1], friend);
     assert.strictEqual(new RowManager().generate({ message: { id: "m", author: me } }).message.username, "Cool Adam", "chat rows");
-    assert.strictEqual(JSON.parse(storage.state).p.created, "2016-05-21");
+    assert.strictEqual(JSON.parse(storage.look_1).p.created, "2016-05-21");
 
     await press("More");
     await TR.act(() => tree.root.findAll(n => n.type === "Switch")[0].props.onValueChange(false));
@@ -203,6 +205,16 @@ const text = n => [].concat(n.props.children).map(c => (c && c.props ? text(c) :
     assert.strictEqual(UserStore.getCurrentUser().globalName, "Cool Adam", "preset brings the look back");
     assert.strictEqual(me.getAvatarURL(), gif, "preset brings the picked photo back");
     assert(UserProfileStore.getUserProfile("1").profileEffect.skuId);
+
+    // switching accounts: the other account starts plain, and switching back brings this one's look back
+    current = friend;
+    assert.strictEqual(UserStore.getCurrentUser(), friend, "other account wears nothing of this one's");
+    assert.strictEqual(friend.getAvatarURL(), "https://cdn/avatar/2", "nor its photo");
+    assert.strictEqual(new RowManager().generate({ message: { id: "m", author: friend } }).message.username, "friend");
+    assert(input("Name this look"), "saved looks are still there to wear");
+    current = me;
+    assert.strictEqual(UserStore.getCurrentUser().globalName, "Cool Adam", "back: its own look again");
+    assert.strictEqual(me.getAvatarURL(), gif);
     await press("Reset all");
 
     plugin.onUnload();

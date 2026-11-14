@@ -99,29 +99,83 @@
     var cat = parse("catalog", null);
     if (!Array.isArray(cat) || cat.length !== 4) cat = [{}, {}, {}, {}];
 
-    var st = parse("state", {});
-    if (!Array.isArray(st.sel) || st.sel.length !== 4) st.sel = parse("selected", null); // v1 kept only this
-    if (!Array.isArray(st.sel) || st.sel.length !== 4) st.sel = [null, null, null, null];
-    if (!Array.isArray(st.badges)) st.badges = [];
-    st.hideBadges = !!st.hideBadges;
-    if (typeof st.banner !== "string") st.banner = "";
-    if (typeof st.avatar !== "string") st.avatar = "";
-    // Profile text: name, username, pronouns, bio, color1, color2, created (YYYY-MM-DD), oldName, email, phone
-    if (!st.p || typeof st.p !== "object") st.p = {};
-    if (!Array.isArray(st.presets)) st.presets = [];
-    // Picked photos live in their own keys ("local" in state), so saving the state stays small and fast
-    if (/^data:/.test(st.banner)) {
-        storage.img_banner = st.banner;
-        st.banner = "local";
+    // Each account wears its own look: "look_<user id>" holds it, "lookimg_<user id>_<avatar|banner>" its picked photos
+    // (kept apart so saving stays small and fast). Switching accounts loads that account's look, so nothing carries
+    // over. Saved looks (presets) and the chat-button switch are shared ("shared"): wearing a saved look is a choice.
+    function normalize(s) {
+        s = s && typeof s === "object" ? s : {};
+        if (!Array.isArray(s.sel) || s.sel.length !== 4) s.sel = [null, null, null, null];
+        if (!Array.isArray(s.badges)) s.badges = [];
+        s.hideBadges = !!s.hideBadges;
+        if (typeof s.banner !== "string") s.banner = "";
+        if (typeof s.avatar !== "string") s.avatar = "";
+        // Profile text: name, username, pronouns, bio, color1, color2, created (YYYY-MM-DD), oldName, email, phone
+        if (!s.p || typeof s.p !== "object") s.p = {};
+        return s;
     }
-    var imgCache = {};
+
+    // Before per-account looks there was one look for everyone in "state" (v1: only "selected") and "img_<k>". It goes
+    // to the first account this version sees, and the old keys go away so no other account picks it up.
+    var legacy = parse("state", null);
+    if (legacy || storage.selected) {
+        legacy = legacy || {};
+        if (!Array.isArray(legacy.sel)) legacy.sel = parse("selected", null);
+    }
+    var shared = parse("shared", null) || {
+        presets: legacy && Array.isArray(legacy.presets) ? legacy.presets : [],
+        chatButton: legacy && legacy.chatButton !== undefined ? !!legacy.chatButton : true
+    };
+
+    var owner = null; // the account whose look `st` is
+    var st, sel, imgCache;
+    function wear(s) {
+        st = normalize(s);
+        st.presets = shared.presets;
+        st.chatButton = shared.chatButton;
+        sel = st.sel;
+        imgCache = {};
+    }
+    wear(null); // nobody's look until Discord says who's signed in
+
+    function useAccount(id) {
+        if (!id || id === owner) return;
+        owner = id;
+        var s = parse("look_" + id, null);
+        if (!s && legacy) {
+            s = legacy;
+            ["avatar", "banner"].forEach(function (k) {
+                if (/^data:/.test(s[k] || "")) {
+                    storage["lookimg_" + id + "_" + k] = s[k];
+                    s[k] = "local";
+                } else if (s[k] === "local") {
+                    storage["lookimg_" + id + "_" + k] = storage["img_" + k] || "";
+                }
+                delete storage["img_" + k];
+            });
+            delete storage.state;
+            delete storage.selected;
+            legacy = null;
+            wear(s);
+            persist();
+        } else {
+            wear(s);
+        }
+        version++;
+        profileVersion++;
+    }
+
+    function persist() {
+        shared.presets = st.presets;
+        shared.chatButton = st.chatButton;
+        storage.shared = JSON.stringify(shared);
+        if (owner) storage["look_" + owner] = JSON.stringify(st, function (k, v) { return k === "presets" || k === "chatButton" ? undefined : v; });
+    }
+
     function imgOf(k) {
         if (st[k] !== "local") return st[k];
-        if (imgCache[k] === undefined) imgCache[k] = storage["img_" + k] || "";
+        if (imgCache[k] === undefined) imgCache[k] = storage["lookimg_" + owner + "_" + k] || "";
         return imgCache[k];
     }
-    if (st.chatButton === undefined) st.chatButton = true;
-    var sel = st.sel;
 
     var version = 0;
     var loading = false;
@@ -330,8 +384,11 @@
 
     var UserStore, ProfileStore;
 
+    // Whoever's signed in now; switching accounts swaps in that account's look
     function me() {
-        return UserStore && UserStore.getCurrentUser();
+        var u = UserStore && UserStore.getCurrentUser();
+        if (u && u.id !== owner) useAccount(u.id);
+        return u;
     }
 
     function isMe(id) {
@@ -349,7 +406,8 @@
     }
 
     function save() {
-        storage.state = JSON.stringify(st);
+        if (!owner) me();
+        persist();
         redraw();
         changed();
     }
@@ -371,7 +429,8 @@
         url = String(url || "").trim();
         if (url && !/^(https:\/\/\S+|data:image\/[\w.+-]+;base64,\S+)$/i.test(url)) return toast("Needs an https:// image link");
         var local = /^data:/.test(url);
-        storage["img_" + k] = local ? url : "";
+        if (!owner) me();
+        storage["lookimg_" + owner + "_" + k] = local ? url : "";
         imgCache[k] = local ? url : "";
         st[k] = local ? "local" : url;
         save();
@@ -1003,7 +1062,22 @@
             UserStore = metro.findByStoreName("UserStore");
             ProfileStore = metro.findByStoreName("UserProfileStore");
             if (!UserStore) throw new Error(NAME + ": Discord's UserStore wasn't found");
-            unpatches.push(after("getCurrentUser", UserStore, function (a, r) { return patched(r, userProps); }));
+            // A new session (start-up, or switching accounts): wear that account's look
+            if (common.FluxDispatcher) {
+                var onSession = function () {
+                    setTimeout(function () {
+                        me();
+                        redraw();
+                        changed();
+                    }, 0);
+                };
+                common.FluxDispatcher.subscribe("CONNECTION_OPEN", onSession);
+                unpatches.push(function () { common.FluxDispatcher.unsubscribe("CONNECTION_OPEN", onSession); });
+            }
+            unpatches.push(after("getCurrentUser", UserStore, function (a, r) {
+                if (r && r.id !== owner) useAccount(r.id);
+                return patched(r, userProps);
+            }));
             unpatches.push(after("getUser", UserStore, function (a, r) { return r && isMe(a[0]) ? patched(r, userProps) : r; }));
             if (ProfileStore && typeof ProfileStore.getUserProfile === "function") {
                 var original = ProfileStore.getUserProfile;
